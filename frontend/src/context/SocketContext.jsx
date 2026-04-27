@@ -10,10 +10,16 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // In dev, connect to localhost:3001
-    // In prod, it will likely be window.location.origin
     const serverUrl = `http://${window.location.hostname}:3001`;
-    const newSocket = io(serverUrl);
+
+    // FIX #15: Enable reconnection with sensible defaults
+    const newSocket = io(serverUrl, {
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+    });
+
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
