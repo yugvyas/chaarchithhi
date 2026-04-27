@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
-import { motion } from 'framer-motion';
-import { Users, Play } from 'lucide-react';
 
 const LandingScreen = () => {
   const { socket, isConnected } = useSocket();
@@ -80,127 +78,121 @@ const LandingScreen = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-full w-full p-6 relative overflow-y-auto overflow-x-hidden">
-      <div className="absolute top-10 left-10 w-32 h-32 bg-yellow-200/20 rounded-full blur-3xl" />
-      <div className="absolute bottom-10 right-10 w-40 h-40 bg-orange-200/20 rounded-full blur-3xl" />
+    <div className="h-full w-full bg-[#8B6F47] relative overflow-hidden flex items-center justify-center p-6"
+         style={{
+           backgroundImage: `
+             radial-gradient(circle at 20% 30%, rgba(139, 111, 71, 0.8) 0%, transparent 50%),
+             radial-gradient(circle at 80% 70%, rgba(101, 67, 33, 0.6) 0%, transparent 50%),
+             repeating-linear-gradient(90deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px),
+             repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px)
+           `,
+           backgroundBlendMode: 'multiply'
+         }}>
 
-      <motion.div
-        initial={{ y: -50, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 100 }}
-        className="text-center mb-12 z-10"
-      >
-        <h1 className="text-6xl font-serif italic font-bold text-ink drop-shadow-[0_4px_4px_rgba(212,175,55,0.3)] mb-2 transform -rotate-2">
-          Chaar Chithhi
-        </h1>
-        <p className="font-handwritten text-[#AA8822] text-2xl font-bold tracking-wide">
-          The classic paper passing game
-        </p>
-      </motion.div>
+      <div className="max-w-md w-full flex flex-col items-center gap-12">
 
-      {!mode ? (
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="flex flex-col gap-6 w-full max-w-sm z-10"
-        >
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setMode('create')}
-            className="group relative flex items-center justify-center gap-3 w-full bg-ink text-paper py-4 px-6 rounded-2xl font-bold text-xl shadow-card-lifted transition-all"
-          >
-            <div className="absolute inset-0 bg-white/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Users size={24} className="text-accent-gold" />
-            <span className="font-serif tracking-wider">Create Room</span>
-          </motion.button>
+        {/* Title */}
+        <div className="relative z-10">
+          <h1 className="text-6xl text-[#2C1810] tracking-wide transform -rotate-1"
+              style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+            Chaar Chithhi
+          </h1>
+          <div className="absolute -bottom-2 left-0 right-0 h-1 bg-[#2C1810] opacity-20 transform rotate-1"></div>
+        </div>
 
-          <div className="flex items-center gap-4 text-ink-light opacity-60">
-            <div className="h-px bg-ink/20 flex-1" />
-            <span className="font-medium text-sm uppercase tracking-wider font-body">OR</span>
-            <div className="h-px bg-ink/20 flex-1" />
-          </div>
+        {/* Action Container */}
+        <div className="w-full flex flex-col gap-6 z-10">
+          {!mode ? (
+            <>
+              <button
+                onClick={() => { setMode('create'); setError(''); }}
+                className="w-full relative bg-[#FFF8E7] border-4 border-[#2C1810] px-8 py-6 shadow-lg transform hover:scale-105 transition-transform active:scale-95"
+                style={{
+                  fontFamily: 'Caveat, cursive',
+                  fontWeight: 700,
+                  transform: 'rotate(-1deg)',
+                  boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.3)'
+                }}>
+                <span className="text-3xl text-[#2C1810]">Create Room</span>
+              </button>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setMode('join')}
-            className="group relative flex items-center justify-center gap-3 w-full bg-paper border border-ink/20 text-ink py-4 px-6 rounded-2xl font-bold text-xl shadow-depth transition-all"
-          >
-            <div className="absolute inset-0 bg-accent-gold/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Play size={24} className="text-ink" />
-            <span className="font-serif tracking-wider">Join Room</span>
-          </motion.button>
-        </motion.div>
-      ) : (
-        <motion.div
-          initial={{ x: 50, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          className="w-full max-w-sm bg-paper-light p-8 rounded-3xl shadow-paper-lifted border border-ink/10 relative z-10"
-        >
-          <button
-            onClick={() => { setMode(null); setError(''); }}
-            className="absolute top-4 right-4 text-ink-light hover:text-ink text-sm font-medium"
-          >
-            Back
-          </button>
-
-          <h2 className="text-3xl font-serif font-bold mb-6 text-ink drop-shadow-sm">
-            {mode === 'create' ? 'Host Game' : 'Join Game'}
-          </h2>
-
-          <form onSubmit={mode === 'create' ? handleCreate : handleJoin} className="flex flex-col gap-5">
-            <div>
-              <label className="block text-xs font-bold text-ink/60 uppercase tracking-widest mb-1 ml-1">
-                Your Name
-              </label>
+              <button
+                onClick={() => { setMode('join'); setError(''); }}
+                className="w-full relative bg-[#F5E6D3] border-4 border-[#2C1810] px-8 py-6 shadow-lg transform hover:scale-105 transition-transform active:scale-95"
+                style={{
+                  fontFamily: 'Caveat, cursive',
+                  fontWeight: 700,
+                  transform: 'rotate(1deg)',
+                  boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.3)'
+                }}>
+                <span className="text-3xl text-[#2C1810]">Join Room</span>
+              </button>
+            </>
+          ) : (
+            <form 
+              onSubmit={mode === 'create' ? handleCreate : handleJoin} 
+              className="relative bg-[#F5E6D3] border-4 border-[#2C1810] p-6 shadow-lg"
+              style={{
+                transform: 'rotate(1deg)',
+                boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.3)'
+              }}>
+              
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-transparent border-b-2 border-ink/20 px-2 py-2 text-2xl font-handwritten focus:outline-none focus:border-accent-gold transition-colors"
-                placeholder="Enter your name"
+                placeholder="YOUR NAME"
+                className="w-full bg-transparent border-b-2 border-[#2C1810] text-center text-3xl text-[#2C1810] placeholder-[#8B6F47] outline-none mb-6"
+                style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}
                 autoFocus
               />
-            </div>
 
-            {mode === 'join' && (
-              <div>
-                <label className="block text-xs font-bold text-ink/60 uppercase tracking-widest mb-1 ml-1">
-                  Room Code
-                </label>
+              {mode === 'join' && (
                 <input
                   type="text"
+                  maxLength={6}
                   value={roomCode}
                   onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                  className="w-full bg-transparent border-b-2 border-ink/20 px-2 py-2 text-2xl font-mono uppercase tracking-widest focus:outline-none focus:border-accent-gold transition-colors"
-                  placeholder="CODE"
-                  maxLength={6}
+                  placeholder="ROOM CODE"
+                  className="w-full bg-transparent border-b-2 border-[#2C1810] text-center text-3xl text-[#2C1810] placeholder-[#8B6F47] outline-none mb-6 uppercase tracking-widest"
+                  style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}
                 />
+              )}
+
+              {error && (
+                <p className="text-red-800 bg-red-200/50 text-center font-bold mb-4 p-2 rounded" style={{ fontFamily: 'Caveat, cursive', fontSize: '1.25rem' }}>
+                  {error}
+                </p>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setMode(null); setError(''); }}
+                  className="flex-1 bg-[#D4A373] border-2 border-[#2C1810] py-3 text-xl text-[#2C1810] hover:bg-[#C49363]"
+                  style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={!isConnected}
+                  className="flex-1 bg-[#D2691E] border-2 border-[#2C1810] py-3 text-xl text-[#FFF8E7] disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#B85A10]"
+                  style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                  {mode === 'create' ? 'Create!' : 'Join!'}
+                </button>
               </div>
-            )}
+            </form>
+          )}
+        </div>
 
-            {error && (
-              <p className="text-red-500 text-sm font-medium bg-red-50 p-2 rounded-md border border-red-100">
-                {error}
-              </p>
-            )}
+        {/* Decorative elements */}
+        <div className="absolute top-8 left-8 w-16 h-16 border-4 border-[#2C1810] bg-[#FFF8E7] transform -rotate-12 opacity-30 pointer-events-none"></div>
+        <div className="absolute bottom-12 right-12 w-12 h-12 border-4 border-[#2C1810] bg-[#F5E6D3] transform rotate-45 opacity-30 pointer-events-none"></div>
 
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.95 }}
-              type="submit"
-              disabled={!isConnected}
-              className="mt-4 w-full bg-ink text-[#F3E5AB] py-4 rounded-xl font-serif font-bold text-lg tracking-wider shadow-card-lifted transition-all disabled:opacity-50"
-            >
-              {mode === 'create' ? 'Create Room' : 'Enter Room'}
-            </motion.button>
-          </form>
-        </motion.div>
-      )}
+      </div>
 
       {!isConnected && (
-        <div className="absolute bottom-4 text-xs text-ink-light opacity-50">
+        <div className="absolute bottom-4 text-[#2C1810] font-bold opacity-50 z-20" style={{ fontFamily: 'Caveat, cursive', fontSize: '1.25rem' }}>
           Connecting to server...
         </div>
       )}

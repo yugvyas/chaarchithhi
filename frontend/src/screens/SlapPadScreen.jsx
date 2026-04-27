@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
-import { motion } from 'framer-motion';
 
 const SlapPadScreen = () => {
   const { socket } = useSocket();
@@ -13,7 +12,7 @@ const SlapPadScreen = () => {
   const timerRef = useRef(null);
 
   const isDhappaPlayer = gameState.dhappaBy === socket?.id;
-  const dhappaPlayerName = gameState.players.find((p) => p.id === gameState.dhappaBy)?.name;
+  const me = gameState.players.find((p) => p.id === socket?.id);
 
   useEffect(() => {
     const startTime = Date.now();
@@ -67,85 +66,60 @@ const SlapPadScreen = () => {
     });
   };
 
-  const otherPlayers = gameState.players.filter((p) => p.id !== gameState.dhappaBy);
-  const colors = ['bg-red-400', 'bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-pink-400'];
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col bg-ink text-paper touch-none"
-      onPointerDown={handleSlap}
-    >
-      {/* Flash Effect */}
-      <motion.div
-        initial={{ opacity: 1 }}
-        animate={{ opacity: 0 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="absolute inset-0 bg-yellow-400 pointer-events-none z-10"
-      />
+    <div className={`fixed inset-0 z-50 flex flex-col justify-center items-center overflow-hidden touch-none ${isDhappaPlayer ? 'bg-[#8B6F47]' : 'bg-gradient-to-br from-[#FFA500] via-[#FF8C00] to-[#FFD700]'}`}>
+      
+      {/* Timer for non-dhappa players */}
+      {!isDhappaPlayer && !slapped && (
+        <div className="absolute top-8 left-0 right-0 text-center z-50 pointer-events-none">
+           <div className="text-[120px] text-white/50 drop-shadow-lg" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+              {Math.ceil(timeLeft / 1000)}
+           </div>
+        </div>
+      )}
 
-      <div className="p-8 text-center flex flex-col items-center justify-center z-20 pointer-events-none">
-        <motion.h1
-          initial={{ scale: 0.5, opacity: 0, rotate: -10 }}
-          animate={{ scale: 1, opacity: 1, rotate: 0 }}
-          className="text-6xl font-black italic tracking-tighter text-yellow-400 drop-shadow-[0_4px_0_#fff]"
-        >
-          DHAPPA!!
-        </motion.h1>
-        <p className="text-xl mt-2">by {dhappaPlayerName}</p>
-
-        {/* FIX #9: Dhappa player sees a clear winner screen, not a blank one */}
-        {isDhappaPlayer ? (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.3 }}
-            className="mt-12 flex flex-col items-center gap-3"
-          >
-            <span className="text-6xl">🏆</span>
-            <p className="text-3xl font-black text-yellow-400 uppercase tracking-wider">
-              You called it!
-            </p>
-            <p className="text-lg text-paper/70">Waiting for others to slap...</p>
-          </motion.div>
-        ) : (
-          <>
-            {!slapped && (
-              <div className="mt-8">
-                <p className="text-3xl font-bold uppercase animate-pulse">Slap the screen!</p>
-                <div className="w-full max-w-xs bg-ink-light rounded-full h-4 mt-4 overflow-hidden border border-ink">
-                  <div
-                    className="bg-yellow-400 h-full transition-all"
-                    style={{ width: `${(timeLeft / 3000) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
-            {slapped && (
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="mt-12 text-2xl font-bold text-green-400"
-              >
-                ✅ SLAP RECORDED!
-              </motion.div>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Slap Zones (Visual) */}
-      <div className="flex-1 grid grid-cols-2 gap-2 p-2 pointer-events-none opacity-80">
-        {otherPlayers.map((p, i) => (
-          <div
-            key={p.id}
-            className={`${colors[i % colors.length]} rounded-xl flex items-center justify-center text-ink font-black text-2xl opacity-50`}
-          >
-            {p.name}'s Zone
+      {isDhappaPlayer ? (
+        // Celebration for Dhappa Player
+        <div className="w-full max-w-sm bg-[#FFF8E7] border-4 border-[#2C1810] p-8 shadow-lg transform rotate-1 text-center"
+             style={{ boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.3)' }}>
+          <div className="text-6xl mb-4 animate-bounce">🏆</div>
+          <h2 className="text-5xl text-[#2C1810] mb-4" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+            You called DHAPPA!
+          </h2>
+          <p className="text-2xl text-[#D2691E] font-bold" style={{ fontFamily: 'Patrick Hand, cursive' }}>
+            1000 points!
+          </p>
+          <p className="mt-6 text-sm text-[#8B6F47] uppercase tracking-widest font-bold">
+            Waiting for others to slap...
+          </p>
+        </div>
+      ) : (
+        // Giant Slap Button for others
+        <div className="w-full h-full flex flex-col justify-center items-center p-6 relative">
+          <div className="absolute top-4 text-white/80 font-bold text-2xl uppercase tracking-widest" style={{ fontFamily: 'Patrick Hand, cursive' }}>
+            {me?.name}
           </div>
-        ))}
-      </div>
 
-      <div className="absolute inset-0 z-0 bg-transparent" />
+          <button
+            onPointerDown={handleSlap}
+            disabled={slapped}
+            className={`w-full h-[60vh] max-w-sm rounded-full border-8 border-[#2C1810] flex items-center justify-center transition-all ${
+              slapped ? 'bg-[#FFF8E7] scale-95 shadow-none' : 'bg-[#D2691E] shadow-[0_20px_0_#2C1810] active:translate-y-4 active:shadow-[0_0_0_#2C1810]'
+            }`}
+            style={{ fontFamily: 'Caveat, cursive', fontWeight: 900 }}
+          >
+            {slapped ? (
+              <span className="text-6xl text-[#2C1810] transform -rotate-12">
+                SLAPPED! ✋
+              </span>
+            ) : (
+              <span className="text-[80px] text-[#FFF8E7] animate-pulse drop-shadow-lg">
+                SLAP!!
+              </span>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,10 +1,6 @@
-import React from 'react';
+import { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { useSocket } from '../context/SocketContext';
-import { motion } from 'framer-motion';
-import { Trophy, RotateCcw } from 'lucide-react';
-
-const medals = ['🥇', '🥈', '🥉'];
 
 const ResultsScreen = () => {
   const { gameState, resetGame } = useGame();
@@ -22,120 +18,140 @@ const ResultsScreen = () => {
     resetGame();
   };
 
+  const [confettiPieces] = useState(() => 
+    [...Array(30)].map((_, i) => ({
+      id: i,
+      width: `${Math.random() * 20 + 10}px`,
+      height: `${Math.random() * 30 + 15}px`,
+      left: `${Math.random() * 100}%`,
+      top: `-${Math.random() * 20}%`,
+      transform: `rotate(${Math.random() * 360}deg)`,
+      animationDelay: `${Math.random() * 3}s`,
+      animationDuration: `${Math.random() * 2 + 3}s`,
+      opacity: 0.7,
+      backgroundColor: ['#FFF8E7', '#F5E6D3', '#FFD93D', '#FF9A56'][Math.floor(Math.random() * 4)]
+    }))
+  );
+
   return (
-    <div className="flex flex-col h-full w-full relative overflow-y-auto bg-paper">
-      {/* Hero Section */}
-      <div className="relative bg-ink text-paper px-6 pt-16 pb-20 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          {[...Array(20)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute text-4xl"
-              style={{
-                top: `${Math.random() * 100}%`,
-                left: `${Math.random() * 100}%`,
-                transform: `rotate(${Math.random() * 360}deg)`,
-              }}
-            >
-              🃏
-            </div>
-          ))}
-        </div>
+    <div className="min-h-screen w-full bg-[#8B6F47] relative overflow-hidden flex flex-col items-center justify-center p-6"
+         style={{
+           backgroundImage: `
+             radial-gradient(circle at 20% 30%, rgba(139, 111, 71, 0.8) 0%, transparent 50%),
+             radial-gradient(circle at 80% 70%, rgba(101, 67, 33, 0.6) 0%, transparent 50%),
+             repeating-linear-gradient(90deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px),
+             repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px)
+           `,
+           backgroundBlendMode: 'multiply'
+         }}>
 
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 15 }}
-          className="text-7xl mb-4"
-        >
-          🏆
-        </motion.div>
+      {/* Confetti - Paper chits falling */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+        {confettiPieces.map((piece) => (
+          <div
+            key={piece.id}
+            className="absolute border-2 border-[#2C1810] animate-confetti"
+            style={piece}
+          />
+        ))}
+      </div>
 
-        <motion.h1
-          initial={{ y: 30, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="text-4xl font-serif italic font-bold text-[#D4AF37] drop-shadow-lg mb-2"
-        >
-          Game Over!
-        </motion.h1>
-
+      <div className="max-w-md w-full z-10 my-8 overflow-y-auto hide-scrollbar flex-1 flex flex-col justify-center">
+        {/* Winner Announcement */}
         {winner && (
-          <motion.p
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.35 }}
-            className="text-xl text-paper/80"
-          >
-            <span className="font-bold text-[#D4AF37]">{winner.name}</span> wins with{' '}
-            <span className="font-bold">{winner.score?.total || 0}</span> points!
-          </motion.p>
+          <div className="mb-8 text-center mt-auto">
+            <div className="text-6xl mb-2 animate-bounce">🎉</div>
+            <h1 className="text-6xl text-[#FFF8E7] mb-3 transform -rotate-2 drop-shadow-lg"
+                style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+              Winner!
+            </h1>
+            <div className="bg-[#FFD93D] border-4 border-[#2C1810] px-10 py-6 inline-block transform rotate-2 shadow-lg"
+                 style={{ boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.4)' }}>
+              <div className="text-6xl text-[#2C1810]"
+                   style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                {winner.name}
+              </div>
+            </div>
+          </div>
         )}
-      </div>
 
-      {/* Leaderboard */}
-      <div className="px-6 -mt-10">
-        <div className="bg-paper rounded-3xl shadow-paper-lifted border border-ink/10 p-6 space-y-4">
-          <h2 className="font-bold text-xl border-b border-ink/10 pb-4">Final Leaderboard</h2>
+        {/* Final Scoreboard */}
+        <div className="bg-[#FFF8E7] border-4 border-[#2C1810] p-6 sm:p-8 transform -rotate-1 shadow-lg mb-8"
+             style={{
+               boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.3)',
+               backgroundImage: 'repeating-linear-gradient(transparent, transparent 35px, rgba(210, 105, 30, 0.1) 35px, rgba(210, 105, 30, 0.1) 36px)'
+             }}>
 
-          {sortedPlayers.map((player, idx) => {
-            const isMe = player.id === socket?.id;
-            const isTop3 = idx < 3;
-            return (
-              <motion.div
-                key={player.id}
-                initial={{ x: -30, opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                transition={{ delay: 0.1 + idx * 0.1 }}
-                className={`flex items-center gap-4 p-4 rounded-2xl ${
-                  idx === 0
-                    ? 'bg-yellow-50 border border-yellow-200'
-                    : 'bg-paper-light border border-ink/5'
-                }`}
-              >
-                <div className="text-3xl w-10 text-center">
-                  {isTop3 ? medals[idx] : <span className="text-lg font-bold text-ink/30">#{idx + 1}</span>}
-                </div>
-                <div className="flex-1">
-                  <p className={`font-bold text-lg leading-none ${idx === 0 ? 'text-yellow-800' : 'text-ink'}`}>
-                    {player.name}
-                    {isMe && (
-                      <span className="ml-2 text-xs bg-ink/10 px-2 py-0.5 rounded-full font-sans">
-                        You
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-ink/50 uppercase tracking-wider font-medium mt-0.5">
-                    {gameState.roundsTotal} rounds played
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className={`font-black text-2xl ${idx === 0 ? 'text-yellow-700' : 'text-ink'}`}>
+          {/* Title */}
+          <h2 className="text-4xl text-[#2C1810] text-center mb-6"
+              style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+            Final Scores
+          </h2>
+
+          {/* Scores */}
+          <div className="space-y-4">
+            {sortedPlayers.map((player, index) => {
+              const isMe = player.id === socket?.id;
+              return (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between pb-3 border-b-2 border-[#2C1810] last:border-b-0">
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl w-10 text-center"
+                         style={{ fontFamily: 'Patrick Hand, cursive' }}>
+                      {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '4th'}
+                    </div>
+                    <span className="text-3xl text-[#2C1810]"
+                          style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                      {player.name}
+                      {isMe && <span className="text-sm bg-[#D2691E] text-[#FFF8E7] px-2 py-1 rounded ml-2 uppercase tracking-widest font-bold align-middle border border-[#2C1810]">You</span>}
+                    </span>
+                  </div>
+
+                  <div className="text-4xl text-[#D2691E]"
+                       style={{ fontFamily: 'Patrick Hand, cursive' }}>
                     {player.score?.total || 0}
-                  </p>
-                  <p className="text-xs text-ink/40 uppercase tracking-wider">pts</p>
+                  </div>
                 </div>
-              </motion.div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="mb-auto">
+          <button
+            onClick={handlePlayAgain}
+            className="w-full bg-[#D2691E] border-4 border-[#2C1810] px-8 py-5 text-3xl text-[#FFF8E7] shadow-lg transform hover:scale-105 transition-transform active:scale-95"
+            style={{
+              fontFamily: 'Caveat, cursive',
+              fontWeight: 700,
+              transform: 'rotate(-0.5deg)',
+              boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.4)'
+            }}>
+            Back to Menu
+          </button>
         </div>
       </div>
 
-      {/* Play Again */}
-      <div className="p-6 mt-auto">
-        <motion.button
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handlePlayAgain}
-          className="w-full flex items-center justify-center gap-3 bg-ink text-paper py-4 rounded-2xl font-serif font-bold text-xl shadow-card-lifted"
-        >
-          <RotateCcw size={22} />
-          Play Again
-        </motion.button>
-      </div>
+      <style>{`
+        @keyframes confetti {
+          0% {
+            transform: translateY(-20vh) rotate(0deg);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(120vh) rotate(720deg);
+            opacity: 0.3;
+          }
+        }
+        .animate-confetti {
+          animation: confetti linear infinite;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
     </div>
   );
 };

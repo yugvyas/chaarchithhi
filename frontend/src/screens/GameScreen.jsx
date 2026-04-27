@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
-import { motion, AnimatePresence } from 'framer-motion';
 
 const GameScreen = () => {
   const { socket } = useSocket();
@@ -19,12 +18,8 @@ const GameScreen = () => {
   const isMyTurn = gameState.currentTurn === socket?.id;
 
   // FIX #8: Stable card rotations — computed once per hand change, not every render
-  const cardRotations = useMemo(
-    () => gameState.hand.map((_, idx) => (idx % 2 === 0 ? 1 : -1) * (Math.random() * 3)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gameState.hand.length]
-  );
-
+  const [cardRotations] = useState(() => gameState.hand.map((_, idx) => (idx % 2 === 0 ? 1 : -1) * (Math.random() * 3)));
+  
   useEffect(() => {
     if (!socket) return;
 
@@ -83,182 +78,191 @@ const GameScreen = () => {
   const isUrgent = passesRemaining <= 10;
 
   // FIX #13: Show the player's objective (which name to collect)
-  const myPlayer = gameState.players.find((p) => p.id === socket?.id);
+
   // The name they need 4 of is whichever name they have the most of right now
   const targetName = Object.entries(nameCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
 
   return (
-    <div className="flex flex-col h-full w-full relative overflow-y-auto overflow-x-hidden bg-paper">
-      {/* Header Info */}
-      <div className="flex justify-between items-center p-6 border-b border-ink/10 bg-white/30 backdrop-blur-md">
-        <div
-          className={`px-5 py-2 rounded-2xl border-2 shadow-sm ${
-            isUrgent
-              ? 'border-red-500 bg-red-50 text-red-700 animate-pulse'
-              : 'border-ink/10 bg-white shadow-depth'
-          }`}
-        >
-          <span className="font-bold font-sans text-lg">{gameState.passCount}</span>{' '}
-          <span className="text-sm font-medium opacity-80 uppercase tracking-widest">
-            / {gameState.maxPasses} Passes
-          </span>
-        </div>
+    <div className="h-full w-full bg-[#8B6F47] relative overflow-hidden flex flex-col"
+         style={{
+           backgroundImage: `
+             radial-gradient(circle at 20% 30%, rgba(139, 111, 71, 0.8) 0%, transparent 50%),
+             radial-gradient(circle at 80% 70%, rgba(101, 67, 33, 0.6) 0%, transparent 50%),
+             repeating-linear-gradient(90deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px),
+             repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px)
+           `,
+           backgroundBlendMode: 'multiply'
+         }}>
 
-        {/* FIX #13: Objective indicator */}
-        {targetName && (
-          <div className="text-center px-3 py-1 rounded-xl bg-accent-goldLight/40 border border-accent-gold/30">
-            <p className="text-[10px] uppercase tracking-widest text-ink/50 font-bold">Collect 4 of</p>
-            <p className="font-handwritten font-bold text-ink text-lg leading-none">{targetName}</p>
+      {/* Header Info - Passes & Objective */}
+      <div className="flex justify-between items-start p-6 z-10">
+        {/* Left: Objective */}
+        {targetName ? (
+          <div className="bg-[#FFF8E7] border-3 border-[#2C1810] px-4 py-2 transform -rotate-2 shadow-lg"
+               style={{ boxShadow: '4px 4px 0px rgba(44, 24, 16, 0.3)' }}>
+            <div className="text-xs text-[#8B6F47] uppercase tracking-widest font-bold">
+              Collect 4
+            </div>
+            <div className="text-2xl text-[#D2691E] text-center" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+              {targetName}
+            </div>
           </div>
-        )}
+        ) : <div />}
 
-        <div
-          className={`text-sm font-bold uppercase tracking-widest px-4 py-2 rounded-2xl border ${
-            isMyTurn
-              ? 'bg-accent-goldLight text-accent-goldDark border-accent-gold'
-              : 'bg-transparent text-ink/50 border-transparent'
-          }`}
-        >
-          {isMyTurn ? 'Your Turn' : 'Waiting'}
+        {/* Right: Passes */}
+        <div className={`bg-[#FFF8E7] border-3 ${isUrgent ? 'border-red-600 animate-pulse' : 'border-[#2C1810]'} px-6 py-2 transform rotate-3 shadow-lg`}
+             style={{ boxShadow: '4px 4px 0px rgba(44, 24, 16, 0.3)' }}>
+          <div className="text-xs text-[#8B6F47] uppercase tracking-widest font-bold text-center">
+            Passes
+          </div>
+          <div className={`text-3xl ${isUrgent ? 'text-red-600' : 'text-[#2C1810]'} text-center`} style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+            {gameState.passCount}
+            <span className="text-sm text-[#8B6F47]">/{gameState.maxPasses}</span>
+          </div>
         </div>
       </div>
 
-      {/* Circle of Players */}
-      <div className="flex-1 relative flex items-center justify-center p-4 min-h-[300px]">
-        <div className="w-full max-w-xs aspect-square rounded-full border border-ink/5 relative flex items-center justify-center shadow-[inset_0_0_50px_rgba(0,0,0,0.02)]">
-          <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full bg-paper-dark/30 border border-ink/10 flex items-center justify-center shadow-[inset_0_10px_20px_rgba(0,0,0,0.05)] backdrop-blur-sm">
-            <span className="font-serif italic text-ink/30 text-xl sm:text-2xl transform -rotate-12 tracking-widest">
-              Table
-            </span>
+      {/* Player Circle - Center */}
+      <div className="flex-1 flex items-center justify-center relative">
+        <div className="relative w-64 h-64">
+          {/* Center wooden surface */}
+          <div className="absolute inset-0 rounded-full bg-[#654321] opacity-40 blur-xl"></div>
+
+          {/* Table text inside center */}
+          <div className="absolute inset-0 flex items-center justify-center">
+             <span className="font-serif italic text-[#FFF8E7]/30 text-2xl transform -rotate-12 tracking-widest pointer-events-none">
+               Table
+             </span>
           </div>
 
-          {gameState.turnOrder.map((playerId, i) => {
+          {/* Players positioned in circle */}
+          {gameState.turnOrder.map((playerId, index) => {
             const player = gameState.players.find((p) => p.id === playerId);
             const isActive = gameState.currentTurn === playerId;
-            const angle = (i / gameState.turnOrder.length) * Math.PI * 2 - Math.PI / 2;
-            const radius = window.innerWidth < 400 ? 95 : 120;
+            const angle = (index / gameState.turnOrder.length) * Math.PI * 2 - Math.PI / 2;
+            const radius = 95;
             const x = Math.cos(angle) * radius;
             const y = Math.sin(angle) * radius;
 
             return (
-              <motion.div
+              <div
                 key={playerId}
-                animate={{ scale: isActive ? 1.15 : 1, zIndex: isActive ? 10 : 1 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                className={`absolute flex flex-col items-center justify-center p-3 rounded-2xl transition-colors ${
-                  isActive ? 'bg-white shadow-card-lifted border border-accent-gold/50' : ''
+                className={`absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ${
+                  isActive ? 'scale-110 z-10' : 'scale-100 z-0'
                 }`}
-                style={{ transform: `translate(${x}px, ${y}px)` }}
-              >
+                style={{
+                  left: `calc(50% + ${x}px)`,
+                  top: `calc(50% + ${y}px)`,
+                }}>
                 <div
-                  className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold mb-2 shadow-depth ${
-                    isActive
-                      ? 'bg-accent-goldDark text-white shadow-gold-glow'
-                      : 'bg-paper-dark text-ink border border-ink/10'
+                  className={`bg-[#F5E6D3] border-3 border-[#2C1810] px-4 py-2 shadow-md ${
+                    isActive ? 'ring-4 ring-[#D2691E]' : ''
                   }`}
-                >
-                  {player?.name.charAt(0).toUpperCase()}
+                  style={{
+                    transform: `rotate(${[-2, 1, 3, -1][index % 4]}deg)`,
+                    boxShadow: isActive
+                      ? '0 0 20px rgba(210, 105, 30, 0.6), 4px 4px 0px rgba(44, 24, 16, 0.3)'
+                      : '4px 4px 0px rgba(44, 24, 16, 0.3)'
+                  }}>
+                  <div className="text-lg text-[#2C1810] whitespace-nowrap text-center"
+                       style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                    {player?.name}
+                  </div>
                 </div>
-                <span
-                  className={`text-xs font-bold max-w-[70px] truncate text-center uppercase tracking-widest ${
-                    isActive ? 'text-ink' : 'text-ink/40'
-                  }`}
-                >
-                  {player?.name}
-                </span>
-              </motion.div>
+              </div>
             );
           })}
         </div>
       </div>
 
-      {/* Action Area */}
-      <div
-        className={`bg-white/80 backdrop-blur-xl border-t border-ink/10 p-6 rounded-t-[2.5rem] shadow-[0_-20px_40px_-15px_rgba(0,0,0,0.1)] transition-all duration-500 ${
-          isMyTurn ? 'opacity-100 translate-y-0' : 'opacity-60 translate-y-4 pointer-events-none'
-        }`}
-      >
-        <div className="flex justify-between items-end mb-6 px-2">
-          <h3 className="font-serif italic text-2xl font-bold text-ink">Your Hand</h3>
+      {/* Hand of Cards - Bottom */}
+      <div className={`pb-8 px-6 transition-all duration-500 ${isMyTurn ? 'opacity-100 translate-y-0' : 'opacity-60 translate-y-8 pointer-events-none'}`}>
+        <div className="max-w-md mx-auto">
+          <div className="mb-6">
+            <h3 className="text-2xl text-[#FFF8E7] text-center mb-4"
+                style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+              Your Hand
+            </h3>
 
-          {/* FIX #6: Show Dhappa button for ANY player with 4-of-a-kind */}
-          {canDhappa && (
-            <motion.button
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleDhappa}
-              className="bg-[#D4AF37] text-ink px-8 py-3 rounded-2xl font-black text-xl border border-[#AA8822] shadow-card-lifted uppercase tracking-widest animate-pulse-gold relative overflow-hidden group"
-            >
-              <div className="absolute inset-0 bg-white/20 transform -skew-x-12 -translate-x-full group-hover:animate-[shimmer_1s_infinite]" />
-              Dhappa!!
-            </motion.button>
-          )}
+            {/* Cards fanned out */}
+            <div className="relative h-44 flex items-end justify-center mb-2">
+              {gameState.hand.map((card, index) => {
+                const totalCards = gameState.hand.length;
+                const fanRotation = ((index - (totalCards - 1) / 2) * 5);
+                const rotation = fanRotation + (cardRotations[index] ?? 0); // Keep jitter + fan out
+                const offset = (index - (totalCards - 1) / 2) * 65;
+                const isSelected = selectedCardId === card.id;
+
+                return (
+                  <button
+                    key={card.id}
+                    onClick={() => isMyTurn && setSelectedCardId(card.id)}
+                    className={`absolute bg-[#FFF8E7] border-[3px] border-[#2C1810] w-[95px] h-[135px] sm:w-[110px] sm:h-[150px] shadow-lg transition-all flex flex-col items-center justify-center p-2 ${
+                      isSelected ? '-translate-y-6 scale-110 ring-4 ring-[#D2691E]' : 'hover:-translate-y-3'
+                    }`}
+                    style={{
+                      transform: `translateX(${offset}px) rotate(${rotation}deg) ${isSelected ? 'translateY(-24px) scale(1.1)' : ''}`,
+                      boxShadow: isSelected
+                        ? '0 0 20px rgba(210, 105, 30, 0.6), 6px 6px 0px rgba(44, 24, 16, 0.4)'
+                        : '6px 6px 0px rgba(44, 24, 16, 0.3)',
+                      zIndex: isSelected ? 10 : totalCards - Math.abs(index - (totalCards - 1) / 2)
+                    }}>
+                    <div className="text-[1.35rem] text-[#2C1810] text-center leading-none break-words w-full"
+                         style={{ fontFamily: 'Patrick Hand, cursive' }}>
+                      {card.name}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-4">
+            <button
+              onClick={handlePass}
+              disabled={!selectedCardId || !isMyTurn}
+              className="flex-1 bg-[#FFF8E7] border-4 border-[#2C1810] py-4 text-3xl text-[#2C1810] shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform active:scale-95"
+              style={{
+                fontFamily: 'Caveat, cursive',
+                fontWeight: 700,
+                transform: 'rotate(-1deg)',
+                boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.3)'
+              }}>
+              PASS
+            </button>
+
+            {canDhappa && (
+              <button
+                onClick={handleDhappa}
+                className="flex-1 bg-[#D2691E] border-4 border-[#2C1810] py-4 text-3xl text-[#FFF8E7] shadow-lg transition-all animate-pulse-glow"
+                style={{
+                  fontFamily: 'Caveat, cursive',
+                  fontWeight: 700,
+                  transform: 'rotate(1deg)',
+                  boxShadow: '0 0 30px rgba(210, 105, 30, 0.8), 6px 6px 0px rgba(44, 24, 16, 0.3)'
+                }}>
+                DHAPPA!!
+              </button>
+            )}
+          </div>
         </div>
-
-        {/* Card Hand */}
-        <div className="flex gap-2 overflow-x-auto pb-4 snap-x hide-scrollbar">
-          <AnimatePresence>
-            {gameState.hand.map((card, idx) => {
-              const rotation = cardRotations[idx] ?? 0; // FIX #8: stable rotation
-              const isSelected = selectedCardId === card.id;
-
-              return (
-                <motion.div
-                  key={card.id}
-                  layout
-                  initial={{ y: 50, opacity: 0 }}
-                  animate={{
-                    y: isSelected ? -20 : 0,
-                    opacity: 1,
-                    rotate: isSelected ? 0 : rotation,
-                    scale: isSelected ? 1.05 : 1,
-                  }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                  exit={{ y: -50, opacity: 0, scale: 0.5 }}
-                  whileHover={isMyTurn ? { scale: 1.05, rotate: 0, y: -10 } : {}}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => isMyTurn && setSelectedCardId(card.id)}
-                  className={`
-                    snap-center flex-shrink-0 w-28 h-40 bg-paper-light rounded-xl border p-3
-                    flex flex-col justify-center items-center cursor-pointer transition-colors duration-200 relative
-                    ${isSelected
-                      ? 'border-accent-gold shadow-card-lifted bg-white'
-                      : 'border-ink/10 shadow-paper'}
-                  `}
-                >
-                  {isSelected && (
-                    <div className="absolute inset-0 rounded-xl ring-2 ring-accent-gold/50 pointer-events-none" />
-                  )}
-                  <span className="font-handwritten text-2xl text-center text-ink font-bold drop-shadow-sm">
-                    {card.name}
-                  </span>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
-
-        <motion.button
-          whileHover={selectedCardId && isMyTurn ? { scale: 1.02 } : {}}
-          whileTap={selectedCardId && isMyTurn ? { scale: 0.95 } : {}}
-          onClick={handlePass}
-          disabled={!selectedCardId || !isMyTurn}
-          className={`w-full py-4 mt-4 rounded-2xl font-serif font-bold tracking-wider text-xl transition-all ${
-            selectedCardId && isMyTurn
-              ? 'bg-ink text-[#D4AF37] shadow-card-lifted'
-              : 'bg-ink/5 text-ink/30 cursor-not-allowed border border-ink/10 shadow-none'
-          }`}
-        >
-          Pass Selected
-        </motion.button>
       </div>
 
-      {/* FIX #7: Remove invalid <style jsx>, use plain <style> instead */}
       <style>{`
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes pulse-glow {
+          0%, 100% {
+            transform: rotate(1deg) scale(1);
+            box-shadow: 0 0 30px rgba(210, 105, 30, 0.8), 6px 6px 0px rgba(44, 24, 16, 0.3);
+          }
+          50% {
+            transform: rotate(1deg) scale(1.08);
+            box-shadow: 0 0 50px rgba(255, 140, 0, 1), 6px 6px 0px rgba(44, 24, 16, 0.3);
+          }
+        }
+        .animate-pulse-glow {
+          animation: pulse-glow 1.5s infinite;
+        }
       `}</style>
     </div>
   );

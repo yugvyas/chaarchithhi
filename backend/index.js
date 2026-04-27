@@ -389,7 +389,7 @@ io.on('connection', (socket) => {
         hostId: room.hostId,
         disconnectedName: disconnectedPlayer.name,
       });
-
+      
       break;
     }
   });

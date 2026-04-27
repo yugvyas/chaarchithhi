@@ -1,8 +1,6 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
-import { motion } from 'framer-motion';
-import { EyeOff } from 'lucide-react';
 
 const CoverScreen = () => {
   const { socket } = useSocket();
@@ -41,45 +39,53 @@ const CoverScreen = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen w-full p-6 text-center">
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        className="mb-8 text-ink/20"
-      >
-        <EyeOff size={80} strokeWidth={1.5} />
-      </motion.div>
-
+    <div className="h-full w-full bg-[#8B6F47] relative overflow-hidden flex flex-col items-center justify-center p-6 text-center"
+         style={{
+           backgroundImage: `
+             radial-gradient(circle at 20% 30%, rgba(139, 111, 71, 0.8) 0%, transparent 50%),
+             radial-gradient(circle at 80% 70%, rgba(101, 67, 33, 0.6) 0%, transparent 50%),
+             repeating-linear-gradient(90deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px),
+             repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px)
+           `,
+           backgroundBlendMode: 'multiply'
+         }}>
+      
       {isMyTurn ? (
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h2 className="text-4xl font-handwritten font-bold mb-2">It's your turn!</h2>
-          <p className="text-ink-light mb-12">Make sure no one is looking at your screen.</p>
+        <div className="w-full max-w-sm bg-[#FFF8E7] border-4 border-[#2C1810] p-8 shadow-lg transform rotate-1"
+             style={{ boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.3)' }}>
+          <h2 className="text-5xl text-[#2C1810] mb-4" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+            It's your turn!
+          </h2>
+          <p className="text-2xl text-[#8B6F47] mb-8 font-bold">
+            Make sure no one is looking at your screen.
+          </p>
 
           <button
             onClick={handleReveal}
             disabled={gameState.hand.length === 0}
-            className="bg-ink text-paper px-8 py-4 rounded-2xl font-bold text-xl shadow-paper-lifted active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-[#D2691E] border-4 border-[#2C1810] py-4 text-3xl text-[#FFF8E7] shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              fontFamily: 'Caveat, cursive',
+              fontWeight: 700,
+              boxShadow: '4px 4px 0px rgba(44, 24, 16, 0.3)'
+            }}
           >
-            {gameState.hand.length === 0 ? 'Loading cards...' : 'Reveal Cards'}
+            {gameState.hand.length === 0 ? 'Loading...' : 'Reveal Cards'}
           </button>
-        </motion.div>
+        </div>
       ) : (
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-        >
-          <h2 className="text-3xl font-body font-semibold mb-2">Wait!</h2>
-          <p className="text-xl text-ink-light">
-            Waiting for <span className="font-bold text-ink">{activePlayer?.name}</span>
+        <div className="w-full max-w-sm bg-[#F5E6D3] border-4 border-[#2C1810] p-8 shadow-lg transform -rotate-1"
+             style={{ boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.3)' }}>
+          <h2 className="text-5xl text-[#2C1810] mb-4" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+            Wait!
+          </h2>
+          <p className="text-2xl text-[#8B6F47] font-bold">
+            Waiting for <span className="font-bold text-[#D2691E] text-3xl block mt-2" style={{ fontFamily: 'Caveat, cursive' }}>{activePlayer?.name}</span>
           </p>
-          <p className="mt-8 text-sm text-ink/50 uppercase tracking-widest">
-            They are picking a card
+          <p className="mt-6 text-sm text-[#8B6F47] uppercase tracking-widest font-bold">
+            They are picking a card...
           </p>
-        </motion.div>
+        </div>
       )}
     </div>
   );

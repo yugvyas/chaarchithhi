@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Copy, User, AlertTriangle } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 
 const LobbyScreen = () => {
   const { socket } = useSocket();
@@ -106,7 +106,16 @@ const LobbyScreen = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full max-w-md mx-auto p-6 relative overflow-x-hidden overflow-y-auto">
+    <div className="h-full w-full bg-[#8B6F47] relative overflow-hidden flex flex-col items-center justify-between p-6"
+         style={{
+           backgroundImage: `
+             radial-gradient(circle at 20% 30%, rgba(139, 111, 71, 0.8) 0%, transparent 50%),
+             radial-gradient(circle at 80% 70%, rgba(101, 67, 33, 0.6) 0%, transparent 50%),
+             repeating-linear-gradient(90deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px),
+             repeating-linear-gradient(0deg, rgba(0,0,0,0.03) 0px, transparent 1px, transparent 40px, rgba(0,0,0,0.03) 41px)
+           `,
+           backgroundBlendMode: 'multiply'
+         }}>
 
       {/* Toast Notification */}
       <AnimatePresence>
@@ -115,154 +124,153 @@ const LobbyScreen = () => {
             initial={{ y: -40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -40, opacity: 0 }}
-            className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-ink text-paper px-4 py-2 rounded-xl text-sm font-medium shadow-card-lifted"
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#2C1810] text-[#FFF8E7] px-6 py-3 rounded text-xl font-bold shadow-lg border-2 border-[#D4A373] whitespace-nowrap"
+            style={{ fontFamily: 'Caveat, cursive' }}
           >
             {notification}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header */}
-      <header className="flex justify-between items-center mb-8 mt-4">
-        <div>
-          <h2 className="text-sm font-body font-semibold text-ink-light uppercase tracking-wider">
+      {/* Room Code Display */}
+      <div className="w-full max-w-md shrink-0">
+        <div className="bg-[#FFF8E7] border-4 border-[#2C1810] p-4 flex flex-col items-center justify-center transform -rotate-1 shadow-lg relative"
+             style={{ boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.3)' }}>
+          <div className="text-lg text-[#8B6F47] mb-1 font-bold tracking-widest uppercase">
             Room Code
-          </h2>
-          <div className="flex items-center gap-2">
-            <span className="text-4xl font-mono font-bold text-ink">{gameState.roomCode}</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-5xl text-[#2C1810] tracking-widest" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+              {gameState.roomCode}
+            </div>
             <button
               onClick={copyRoomCode}
-              className="p-2 hover:bg-ink/5 rounded-full transition-colors"
+              className="p-2 bg-[#F5E6D3] border-2 border-[#2C1810] rounded hover:bg-[#D4A373] transition-colors"
             >
               {copied ? (
-                <Check size={20} className="text-green-600" />
+                <Check size={24} className="text-green-800" />
               ) : (
-                <Copy size={20} className="text-ink-light" />
+                <Copy size={24} className="text-[#2C1810]" />
               )}
             </button>
           </div>
+          <div className="absolute -top-4 -right-4 bg-[#D2691E] text-[#FFF8E7] px-3 py-1 border-2 border-[#2C1810] font-bold transform rotate-6 shadow-md" style={{ fontFamily: 'Caveat, cursive', fontSize: '1.25rem' }}>
+            {gameState.players.length} Players
+          </div>
         </div>
-        <div className="bg-paper-dark px-4 py-2 rounded-full border border-ink/10 shadow-sm">
-          <span className="font-semibold">{gameState.players.length}</span>{' '}
-          <span className="text-sm text-ink-light">Players</span>
-        </div>
-      </header>
+      </div>
 
       {/* Players List */}
-      <div className="flex-1 overflow-y-auto mb-8">
-        <h3 className="font-handwritten text-2xl font-bold mb-4 ml-2">Players</h3>
-        <div className="space-y-3">
-          <AnimatePresence>
-            {gameState.players.map((player) => (
-              <motion.div
-                key={player.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-paper-light p-4 rounded-2xl border border-ink/10 shadow-depth flex justify-between items-center"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-paper font-bold ${
-                      player.id === gameState.hostId
-                        ? 'bg-accent-goldDark shadow-gold-glow'
-                        : 'bg-ink'
-                    }`}
-                  >
-                    {player.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-bold font-serif text-lg flex items-center gap-2">
-                      {player.name}
-                      {player.id === socket?.id && (
-                        <span className="text-xs font-sans bg-ink/10 px-2 py-0.5 rounded-full">
-                          You
-                        </span>
-                      )}
-                    </p>
-                    {player.id === gameState.hostId && (
-                      <p className="text-xs text-ink-light">Host</p>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  {player.chithhiName ? (
-                    <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-3 py-1 rounded-full text-sm font-medium border border-green-200">
-                      <Check size={14} /> Ready
-                    </span>
-                  ) : (
-                    <span className="text-sm text-ink-light italic">Choosing...</span>
-                  )}
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+      <div className="w-full max-w-md flex-1 overflow-y-auto py-6 flex flex-col gap-3 hide-scrollbar">
+        {gameState.players.map((player, index) => (
+          <div
+            key={player.id}
+            className="bg-[#F5E6D3] border-4 border-[#2C1810] p-4 flex items-center justify-between shadow-md shrink-0"
+            style={{
+              transform: `rotate(${[-1, 1, -0.5, 0.5][index % 4]}deg)`,
+              boxShadow: '4px 4px 0px rgba(44, 24, 16, 0.2)'
+            }}>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl text-[#2C1810]" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                {player.name}
+              </span>
+              {player.id === socket?.id && (
+                <span className="text-sm bg-[#2C1810] text-[#FFF8E7] px-2 py-0.5 rounded font-bold">You</span>
+              )}
+              {player.id === gameState.hostId && (
+                <span className="text-sm border-2 border-[#D2691E] text-[#D2691E] px-2 py-0.5 font-bold transform -rotate-3 bg-[#FFF8E7]">Host</span>
+              )}
+            </div>
+            {player.chithhiName ? (
+              <div className="bg-[#E8F5E9] border-2 border-[#2E7D32] px-3 py-1 transform rotate-2">
+                <span className="text-lg text-[#2E7D32] font-bold">Ready</span>
+              </div>
+            ) : (
+              <span className="text-lg text-[#8B6F47] italic font-bold">Choosing...</span>
+            )}
+          </div>
+        ))}
 
-        {/* FIX #12: Warn if only 1 player */}
         {gameState.players.length < 2 && (
-          <p className="mt-4 text-sm text-orange-600 bg-orange-50 border border-orange-200 rounded-xl px-4 py-2 flex items-center gap-2">
-            <AlertTriangle size={16} />
-            Need at least 2 players to start
-          </p>
+           <p className="mt-2 text-center text-xl text-[#FFF8E7] opacity-80" style={{ fontFamily: 'Caveat, cursive' }}>
+             Need at least 2 players to start...
+           </p>
         )}
       </div>
 
       {/* Action Area */}
-      <div className="bg-paper-light p-6 md:p-8 rounded-t-3xl border-t border-ink/10 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] -mx-6 px-6 pb-12 mt-auto">
+      <div className="w-full max-w-md shrink-0">
         {!myChithhiName ? (
-          <form onSubmit={handleSetChithhi} className="flex flex-col gap-3">
-            <label className="font-handwritten text-3xl font-bold">Write your Chithhi</label>
-            <p className="text-sm text-ink-light mb-2 leading-relaxed">
-              Pick a name (character, object, place) that others will try to collect.
-            </p>
+          <form onSubmit={handleSetChithhi} className="bg-[#FFF8E7] border-4 border-[#2C1810] p-5 shadow-lg transform rotate-1" style={{ boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.3)' }}>
+            <label className="block text-2xl text-[#2C1810] mb-2" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+              Write your Chithhi (Secret)
+            </label>
             <div className="flex flex-col sm:flex-row gap-3">
               <input
                 type="text"
                 value={chithhiName}
                 onChange={(e) => setChithhiName(e.target.value)}
-                className="flex-1 w-full bg-white border-2 border-ink/20 rounded-xl px-4 py-4 font-handwritten text-2xl focus:outline-none focus:border-[#D4AF37] transition-colors"
                 placeholder="e.g. Batman, Pizza..."
+                className="flex-1 bg-transparent border-b-2 border-[#2C1810] px-2 py-2 text-2xl text-[#2C1810] placeholder-[#8B6F47] outline-none"
+                style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}
               />
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.95 }}
+              <button
                 type="submit"
-                className="bg-ink text-[#F3E5AB] py-4 sm:px-8 rounded-xl font-bold font-serif tracking-wider shadow-depth transition-transform w-full sm:w-auto"
+                className="bg-[#2C1810] text-[#FFF8E7] py-2 px-6 text-xl font-bold border-2 border-[#D4A373] hover:bg-[#4A2E1B] transition-colors"
+                style={{ fontFamily: 'Caveat, cursive' }}
               >
-                Set Name
-              </motion.button>
+                Set
+              </button>
             </div>
-            {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+            {error && <p className="text-red-600 text-sm mt-2 font-bold">{error}</p>}
           </form>
         ) : (
-          <div className="text-center py-2">
-            <div className="inline-block transform rotate-[-2deg] bg-white px-8 py-4 rounded-xl shadow-paper border border-ink/10 mb-8 mt-4">
-              <p className="font-handwritten text-4xl text-ink font-bold">"{myChithhiName}"</p>
+          <div className="flex flex-col gap-4">
+            <div className="bg-[#FFF8E7] border-4 border-[#2C1810] p-4 text-center transform -rotate-1 shadow-md">
+              <p className="text-lg text-[#8B6F47] mb-1 font-bold">Your Secret Chithhi</p>
+              <p className="text-4xl text-[#D2691E]" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                "{myChithhiName}"
+              </p>
             </div>
 
             {isHost ? (
-              <motion.button
-                whileHover={allNamesSet ? { scale: 1.02 } : {}}
-                whileTap={allNamesSet ? { scale: 0.95 } : {}}
+              <button
                 onClick={handleStartGame}
                 disabled={!allNamesSet}
-                className={`w-full py-5 rounded-2xl font-bold font-serif tracking-wider text-xl transition-all ${
-                  allNamesSet
-                    ? 'bg-ink text-[#D4AF37] shadow-card-lifted'
-                    : 'bg-ink/10 text-ink/40 cursor-not-allowed shadow-none border border-ink/10'
-                }`}
-              >
-                {allNamesSet ? 'Start Game' : 'Waiting for everyone...'}
-              </motion.button>
+                className="w-full bg-[#D2691E] border-4 border-[#2C1810] px-8 py-5 text-4xl text-[#FFF8E7] shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                style={{
+                  fontFamily: 'Caveat, cursive',
+                  fontWeight: 700,
+                  transform: 'rotate(-0.5deg)',
+                  boxShadow: '8px 8px 0px rgba(44, 24, 16, 0.4)',
+                  animation: allNamesSet ? 'pulse 2s infinite' : 'none'
+                }}>
+                {allNamesSet ? 'Start Game!' : 'Waiting for everyone...'}
+              </button>
             ) : (
-              <p className="text-ink-light font-medium mt-2 animate-pulse">
-                Waiting for host to start...
-              </p>
+              <div className="bg-[#F5E6D3] border-4 border-[#2C1810] px-8 py-5 text-center transform rotate-1 shadow-lg" style={{ boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.3)' }}>
+                 <p className="text-3xl text-[#2C1810] animate-pulse" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+                    Waiting for host to start...
+                 </p>
+              </div>
             )}
           </div>
         )}
       </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { transform: rotate(-0.5deg) scale(1); }
+          50% { transform: rotate(-0.5deg) scale(1.05); }
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
 };
