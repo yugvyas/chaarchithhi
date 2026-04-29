@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
+import thappaSound from '../soundeffects/thappasoundeffect.mp3';
 
 const SlapPadScreen = () => {
   const { socket } = useSocket();
@@ -60,6 +61,7 @@ const SlapPadScreen = () => {
     e.preventDefault();
     if (slapped || isDhappaPlayer) return;
     setSlapped(true);
+    new Audio(thappaSound).play().catch(err => console.log("Audio play failed", err));
     socket?.emit('register_slap', {
       roomCode: gameState.roomCode,
       timestamp: Date.now(),

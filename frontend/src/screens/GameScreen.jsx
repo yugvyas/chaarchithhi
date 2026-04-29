@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
+import thappaSound from '../soundeffects/thappasoundeffect.mp3';
+import passSound from '../soundeffects/passingsoundeffect.mp3';
 
 const GameScreen = () => {
   const { socket } = useSocket();
@@ -39,6 +41,7 @@ const GameScreen = () => {
     };
 
     const handleDhappaTriggered = (data) => {
+      new Audio(thappaSound).play().catch(err => console.log("Audio play failed", err));
       updateGameState({ status: 'slappad', dhappaBy: data.by });
     };
 
@@ -65,6 +68,7 @@ const GameScreen = () => {
 
   const handlePass = () => {
     if (!selectedCardId || !isMyTurn) return;
+    new Audio(passSound).play().catch(err => console.log("Audio play failed", err));
     socket.emit('pass_card', { roomCode: gameState.roomCode, cardId: selectedCardId });
     setSelectedCardId(null);
   };
