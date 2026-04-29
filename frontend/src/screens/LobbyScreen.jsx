@@ -50,7 +50,7 @@ const LobbyScreen = () => {
 
     const handleGameStarted = (data) => {
       updateGameState({
-        status: data.currentTurn === socket.id ? 'cover' : 'playing',
+        status: 'playing',
         turnOrder: data.turnOrder,
         currentTurn: data.currentTurn,
         maxPasses: data.maxPasses,
@@ -158,6 +158,25 @@ const LobbyScreen = () => {
             {gameState.players.length} Players
           </div>
         </div>
+
+        {/* Game Settings (Host Only) */}
+        {isHost && (
+          <div className="mt-4 bg-[#F5E6D3] border-4 border-[#2C1810] p-3 shadow-md transform rotate-1 flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-[#2C1810] font-bold text-sm uppercase tracking-tight">Rule: Strict 4-Card Dhappa</span>
+              <span className="text-[#8B6F47] text-[10px] leading-tight">Must have exactly 4 cards to Dhappa. 5 is a "dirty hand".</span>
+            </div>
+            <button
+              onClick={() => socket.emit('update_settings', { 
+                roomCode: gameState.roomCode, 
+                settings: { strictDhappa: !gameState.settings?.strictDhappa } 
+              })}
+              className={`w-12 h-6 rounded-full transition-colors relative border-2 border-[#2C1810] ${gameState.settings?.strictDhappa ? 'bg-[#D2691E]' : 'bg-[#8B6F47]/20'}`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${gameState.settings?.strictDhappa ? 'left-6' : 'left-0.5'}`} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Players List */}

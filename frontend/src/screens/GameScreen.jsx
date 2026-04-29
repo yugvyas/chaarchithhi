@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
 import thappaSound from '../soundeffects/thappasoundeffect.mp3';
@@ -9,6 +9,15 @@ const GameScreen = () => {
   const { gameState, updateGameState } = useGame();
 
   const [selectedCardId, setSelectedCardId] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(10);
+  const [feedbackMessage, setFeedbackMessage] = useState(null);
+  const [showFalseDhappa, setShowFalseDhappa] = useState(null); // { by: string, name: string }
+  const timerIntervalRef = useRef(null);
+  const gameStateRef = useRef(gameState);
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   // FIX #6: Dhappa is available to ANY player with 4-of-a-kind, not just the turn player
   const nameCounts = {};
@@ -31,9 +40,11 @@ const GameScreen = () => {
       updateGameState((prev) => ({
         currentTurn: data.playerId,
         passCount: data.passCount,
-        // Only navigate to cover if it becomes this player's turn
-        status: data.playerId === socket.id ? 'cover' : prev.status,
+        status: 'playing',
       }));
+      
+      // Reset timer
+      setTimeLeft(10);
     };
 
     const handleHand = (data) => {
@@ -43,6 +54,43 @@ const GameScreen = () => {
     const handleDhappaTriggered = (data) => {
       new Audio(thappaSound).play().catch(err => console.log("Audio play failed", err));
       updateGameState({ status: 'slappad', dhappaBy: data.by });
+    };
+
+    const handleFalseDhappa = (data) => {
+      const player = data.players.find(p => p.id === data.by);
+      setShowFalseDhappa({ by: data.by, name: player?.name });
+      updateGameState({ players: data.players });
+      setTimeout(() => setShowFalseDhappa(null), 3000);
+    };
+
+    const handleChallengeSuccessSummary = (data) => {
+      const dhappaPlayer = data.players.find(p => p.id === data.dhappaBy);
+      setFeedbackMessage({
+        type: 'success',
+        title: 'CAUGHT!! 🕵️',
+        text: `${dhappaPlayer?.name} had a dirty hand! Round resumes.`,
+      });
+      updateGameState({ players: data.players, status: 'playing', dhappaBy: null });
+      setTimeout(() => setFeedbackMessage(null), 3000);
+    };
+
+    const handleChallengeFailedSummary = (data) => {
+      updateGameState({ players: data.players });
+      // The actual round end will follow
+    };
+
+    const handleSettingsUpdated = (data) => {
+      updateGameState({ settings: data.settings });
+    };
+
+    const handlePlayerSkipped = (data) => {
+      const player = gameStateRef.current.players?.find(p => p.id === data.playerId);
+      setFeedbackMessage({
+        type: 'info',
+        title: 'SKIPPED!',
+        text: `${player?.name || 'Someone'} is sitting out (${data.sittingOutCount} left).`,
+      });
+      setTimeout(() => setFeedbackMessage(null), 2000);
     };
 
     // FIX #2: GameScreen no longer listens for round_end.
@@ -56,15 +104,38 @@ const GameScreen = () => {
     socket.on('turn_start', handleTurnStart);
     socket.on('your_hand', handleHand);
     socket.on('dhappa_triggered', handleDhappaTriggered);
+    socket.on('false_dhappa', handleFalseDhappa);
+    socket.on('challenge_success_summary', handleChallengeSuccessSummary);
+    socket.on('challenge_failed_summary', handleChallengeFailedSummary);
+    socket.on('settings_updated', handleSettingsUpdated);
+    socket.on('player_skipped', handlePlayerSkipped);
     socket.on('game_aborted', handleGameAborted);
 
     return () => {
       socket.off('turn_start', handleTurnStart);
       socket.off('your_hand', handleHand);
       socket.off('dhappa_triggered', handleDhappaTriggered);
+      socket.off('false_dhappa', handleFalseDhappa);
+      socket.off('challenge_success_summary', handleChallengeSuccessSummary);
+      socket.off('challenge_failed_summary', handleChallengeFailedSummary);
+      socket.off('settings_updated', handleSettingsUpdated);
+      socket.off('player_skipped', handlePlayerSkipped);
       socket.off('game_aborted', handleGameAborted);
     };
   }, [socket, updateGameState]);
+
+  // Timer countdown logic
+  useEffect(() => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    
+    timerIntervalRef.current = setInterval(() => {
+      setTimeLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    };
+  }, [gameState.currentTurn]);
 
   const handlePass = () => {
     if (!selectedCardId || !isMyTurn) return;
@@ -74,7 +145,7 @@ const GameScreen = () => {
   };
 
   const handleDhappa = () => {
-    if (!canDhappa) return;
+    // Riskier: always allow trigger
     socket.emit('trigger_dhappa', { roomCode: gameState.roomCode });
   };
 
@@ -159,19 +230,49 @@ const GameScreen = () => {
                   top: `calc(50% + ${y}px)`,
                 }}>
                 <div
-                  className={`bg-[#F5E6D3] border-3 border-[#2C1810] px-4 py-2 shadow-md ${
-                    isActive ? 'ring-4 ring-[#D2691E]' : ''
-                  }`}
+                  className={`relative bg-[#F5E6D3] border-3 border-[#2C1810] px-4 py-2 shadow-md overflow-hidden transition-all duration-300 ${
+                    isActive ? 'ring-4 ring-[#D2691E]/50' : ''
+                  } ${player?.sittingOutCount > 0 ? 'grayscale opacity-50' : ''}`}
                   style={{
                     transform: `rotate(${[-2, 1, 3, -1][index % 4]}deg)`,
                     boxShadow: isActive
-                      ? '0 0 20px rgba(210, 105, 30, 0.6), 4px 4px 0px rgba(44, 24, 16, 0.3)'
+                      ? '0 0 20px rgba(210, 105, 30, 0.4), 4px 4px 0px rgba(44, 24, 16, 0.3)'
                       : '4px 4px 0px rgba(44, 24, 16, 0.3)'
                   }}>
-                  <div className="text-lg text-[#2C1810] whitespace-nowrap text-center"
+                  
+                  {/* Turn Timer Progress Border */}
+                  {isActive && (
+                    <div 
+                      className="absolute bottom-0 left-0 h-1 bg-[#D2691E] transition-all duration-1000 ease-linear"
+                      style={{ width: `${(timeLeft / 10) * 100}%` }}
+                    />
+                  )}
+                  {isActive && (
+                    <div 
+                      className="absolute top-0 left-0 w-full h-full border-[6px] border-[#D2691E] opacity-20 pointer-events-none"
+                      style={{ 
+                        clipPath: `inset(0 ${100 - (timeLeft / 10) * 100}% 0 0)` 
+                      }}
+                    />
+                  )}
+
+                  <div className="text-lg text-[#2C1810] whitespace-nowrap text-center relative z-10"
                        style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
                     {player?.name}
+                    {isActive && (
+                      <span className="ml-2 text-xs opacity-60 font-mono">
+                        {timeLeft}s
+                      </span>
+                    )}
                   </div>
+                  {(player?.sittingOutCount > 0) && (
+                    <div className="absolute top-0 left-0 w-full h-full bg-red-600/10 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-[10px] bg-red-600 text-white px-1 font-bold uppercase tracking-tighter transform -rotate-12">
+                        SITTING OUT
+                      </span>
+                      <span className="text-[8px] font-bold text-red-800">{player.sittingOutCount} turns</span>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -236,22 +337,65 @@ const GameScreen = () => {
               PASS
             </button>
 
-            {canDhappa && (
-              <button
-                onClick={handleDhappa}
-                className="flex-1 bg-[#D2691E] border-4 border-[#2C1810] py-4 text-3xl text-[#FFF8E7] shadow-lg transition-all animate-pulse-glow"
-                style={{
-                  fontFamily: 'Caveat, cursive',
-                  fontWeight: 700,
-                  transform: 'rotate(1deg)',
-                  boxShadow: '0 0 30px rgba(210, 105, 30, 0.8), 6px 6px 0px rgba(44, 24, 16, 0.3)'
-                }}>
-                DHAPPA!!
-              </button>
-            )}
+            <button
+              onClick={handleDhappa}
+              className={`flex-1 border-4 border-[#2C1810] py-4 text-3xl shadow-lg transition-all ${
+                canDhappa 
+                  ? 'bg-[#D2691E] text-[#FFF8E7] animate-pulse-glow' 
+                  : 'bg-[#D2691E]/60 text-[#FFF8E7]/60'
+              }`}
+              style={{
+                fontFamily: 'Caveat, cursive',
+                fontWeight: 700,
+                transform: 'rotate(1deg)',
+                boxShadow: canDhappa 
+                  ? '0 0 30px rgba(210, 105, 30, 0.8), 6px 6px 0px rgba(44, 24, 16, 0.3)'
+                  : '6px 6px 0px rgba(44, 24, 16, 0.3)'
+              }}>
+              DHAPPA!!
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Feedback Message */}
+      {feedbackMessage && (
+        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[110] w-[90%] max-w-md pointer-events-none">
+          <div className={`bg-[#FFF8E7] border-4 border-[#2C1810] p-6 shadow-2xl text-center transform ${feedbackMessage.type === 'error' ? 'rotate-2' : '-rotate-2'} animate-in slide-in-from-bottom duration-500`}
+               style={{ boxShadow: '10px 10px 0px rgba(44, 24, 16, 0.4)' }}>
+            <h2 className={`text-4xl mb-2 ${feedbackMessage.type === 'error' ? 'text-red-600' : feedbackMessage.type === 'success' ? 'text-green-600' : 'text-[#D2691E]'}`}
+                style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+              {feedbackMessage.title}
+            </h2>
+            <p className="text-xl text-[#2C1810]" style={{ fontFamily: 'Patrick Hand, cursive' }}>
+              {feedbackMessage.text}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* False Dhappa Flash Overlay */}
+      {showFalseDhappa && (
+        <div className="fixed inset-0 z-[200] bg-red-600 flex flex-col items-center justify-center animate-pulse-fast p-8 text-center">
+           <h1 className="text-6xl sm:text-8xl text-white font-black mb-8 transform -rotate-6 scale-110 drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]"
+               style={{ fontFamily: 'Caveat, cursive' }}>
+             JHOOTHA DHAPPA!! 🤡
+           </h1>
+           <div className="bg-white border-8 border-black p-6 transform rotate-3 shadow-2xl">
+              <p className="text-3xl text-red-600 font-bold uppercase tracking-tighter">
+                {showFalseDhappa.by === socket.id ? "YOU FAKED IT!" : `${showFalseDhappa.name} LIED!`}
+              </p>
+              <p className="text-xl text-black mt-2 font-mono">
+                -500 POINTS | HAND RESET | 2 TURNS SKIP
+              </p>
+           </div>
+           
+           {/* Laughing Animation (Emoji) */}
+           <div className="mt-12 text-9xl animate-bounce">
+              😂
+           </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes pulse-glow {
@@ -264,8 +408,15 @@ const GameScreen = () => {
             box-shadow: 0 0 50px rgba(255, 140, 0, 1), 6px 6px 0px rgba(44, 24, 16, 0.3);
           }
         }
+        @keyframes pulse-fast {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.8; }
+        }
         .animate-pulse-glow {
           animation: pulse-glow 1.5s infinite;
+        }
+        .animate-pulse-fast {
+          animation: pulse-fast 0.2s infinite;
         }
       `}</style>
     </div>

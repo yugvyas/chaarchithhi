@@ -48,6 +48,11 @@ io.on('connection', (socket) => {
       maxPasses: 0,
       turnOrder: [],
       slaps: [],
+      turnTimeout: null,
+      settings: {
+        strictDhappa: false, // "Dirty Hand" rule: true = must have exactly 4 cards
+      },
+      dhappaInfo: null,
     };
     socket.join(roomCode);
     socket.emit('room_created', {
@@ -113,6 +118,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ─── Update Settings ──────────────────────────────────────────────────────
+  socket.on('update_settings', ({ roomCode, settings }) => {
+    const room = rooms[roomCode];
+    if (!room || room.hostId !== socket.id) return;
+    room.settings = { ...room.settings, ...settings };
+    io.to(roomCode).emit('settings_updated', { settings: room.settings });
+  });
+
   // ─── Start Game / Next Round ───────────────────────────────────────────────
   socket.on('start_game', ({ roomCode }) => {
     const room = rooms[roomCode];
@@ -136,6 +149,9 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Game is already over' });
       return;
     }
+
+    // Clear any pending dhappa state
+    room.dhappaInfo = null;
 
     room.status = 'playing';
     room.roundsCurrent += 1;
@@ -179,60 +195,140 @@ io.on('connection', (socket) => {
       playerId: room.currentTurn,
       passCount: room.passCount,
     });
+    startTurnTimer(roomCode);
   });
 
-  // ─── Pass Card ────────────────────────────────────────────────────────────
-  socket.on('pass_card', ({ roomCode, cardId }) => {
+  const reshufflePlayerHand = (roomCode, playerId) => {
     const room = rooms[roomCode];
-    if (!room || room.status !== 'playing' || room.currentTurn !== socket.id) return;
+    if (!room) return;
 
-    const playerHand = room.hands[socket.id];
+    const hand = room.hands[playerId];
+    if (!hand) return;
+
+    // Put cards back in deck
+    room.deck.push(...hand);
+    
+    // Shuffle deck
+    for (let i = room.deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [room.deck[i], room.deck[j]] = [room.deck[j], room.deck[i]];
+    }
+
+    // Draw 4 new ones
+    room.hands[playerId] = room.deck.splice(0, 4);
+    
+    io.to(playerId).emit('your_hand', { hand: room.hands[playerId] });
+  };
+
+  const startTurnTimer = (roomCode) => {
+    const room = rooms[roomCode];
+    if (!room) return;
+
+    if (room.turnTimeout) clearTimeout(room.turnTimeout);
+
+    room.turnTimeout = setTimeout(() => {
+      const currentPlayerId = room.currentTurn;
+      const hand = room.hands[currentPlayerId];
+      if (!hand || hand.length === 0) return;
+
+      // Pick a random card
+      const randomIndex = Math.floor(Math.random() * hand.length);
+      const cardId = hand[randomIndex].id;
+
+      // Simulate pass_card
+      console.log(`Auto-passing card ${cardId} for player ${currentPlayerId} in room ${roomCode}`);
+      handlePassCard(roomCode, currentPlayerId, cardId);
+    }, 10000); // 10 seconds
+  };
+
+  const handlePassCard = (roomCode, playerId, cardId) => {
+    const room = rooms[roomCode];
+    if (!room || room.status !== 'playing' || room.currentTurn !== playerId) return;
+
+    // Check if player is sitting out
+    const player = room.players.find(p => p.id === playerId);
+    if (player && player.sittingOut) {
+      // This shouldn't happen if turn advancement skips them, but guard anyway
+      player.sittingOut = false; // Reset for next time
+    }
+
+    if (room.turnTimeout) clearTimeout(room.turnTimeout);
+
+    const playerHand = room.hands[playerId];
     const cardIndex = playerHand.findIndex((c) => c.id === cardId);
     if (cardIndex === -1) return;
 
     const passedCard = playerHand.splice(cardIndex, 1)[0];
 
-    const currentIndex = room.turnOrder.indexOf(socket.id);
-    const nextIndex = (currentIndex + 1) % room.turnOrder.length;
-    const nextPlayerId = room.turnOrder[nextIndex];
+    const currentIndex = room.turnOrder.indexOf(playerId);
+    let nextIndex = (currentIndex + 1) % room.turnOrder.length;
+    let nextPlayerId = room.turnOrder[nextIndex];
+
+    // Skip sitting out players
+    const nextPlayer = room.players.find(p => p.id === nextPlayerId);
+    if (nextPlayer && nextPlayer.sittingOut) {
+      console.log(`Player ${nextPlayer.name} is sitting out, skipping turn.`);
+      nextPlayer.sittingOut = false; // They sat out this turn
+      nextIndex = (nextIndex + 1) % room.turnOrder.length;
+      nextPlayerId = room.turnOrder[nextIndex];
+      io.to(roomCode).emit('player_skipped', { playerId: nextPlayer.id });
+    }
 
     room.hands[nextPlayerId].push(passedCard);
     room.passCount++;
     room.currentTurn = nextPlayerId;
 
     io.to(roomCode).emit('card_passed', {
-      from: socket.id,
+      from: playerId,
       to: nextPlayerId,
       passCount: room.passCount,
     });
-    io.to(socket.id).emit('your_hand', { hand: room.hands[socket.id] });
+    io.to(playerId).emit('your_hand', { hand: room.hands[playerId] });
     io.to(nextPlayerId).emit('your_hand', { hand: room.hands[nextPlayerId] });
 
     if (room.passCount >= room.maxPasses) {
       endRound(roomCode, null);
     } else {
+      // Check if next player is sitting out
+      const checkNextTurn = () => {
+        const currentPlayer = room.players.find(p => p.id === room.currentTurn);
+        if (currentPlayer && (currentPlayer.sittingOutCount || 0) > 0) {
+          console.log(`Skipping sitting out player: ${currentPlayer.name} (${currentPlayer.sittingOutCount} left)`);
+          currentPlayer.sittingOutCount--;
+          
+          const curIndex = room.turnOrder.indexOf(room.currentTurn);
+          const nxtIndex = (curIndex + 1) % room.turnOrder.length;
+          room.currentTurn = room.turnOrder[nxtIndex];
+          
+          io.to(roomCode).emit('player_skipped', { 
+            playerId: currentPlayer.id, 
+            sittingOutCount: currentPlayer.sittingOutCount,
+            nextPlayerId: room.currentTurn 
+          });
+          
+          checkNextTurn();
+        }
+      };
+
+      checkNextTurn();
+
       io.to(roomCode).emit('turn_start', {
         playerId: room.currentTurn,
         passCount: room.passCount,
       });
-
-      // Notify receiver if they now have 4-of-a-kind so their UI can react
-      const receiverHand = room.hands[nextPlayerId];
-      const nameCounts = {};
-      receiverHand.forEach((c) => {
-        nameCounts[c.name] = (nameCounts[c.name] || 0) + 1;
-      });
-      if (Object.values(nameCounts).some((count) => count >= 4)) {
-        io.to(nextPlayerId).emit('can_dhappa', {});
-      }
+      startTurnTimer(roomCode);
     }
+  };
+
+  // ─── Pass Card ────────────────────────────────────────────────────────────
+  socket.on('pass_card', ({ roomCode, cardId }) => {
+    handlePassCard(roomCode, socket.id, cardId);
   });
 
   // ─── Trigger Dhappa ───────────────────────────────────────────────────────
-  // FIX #6: ANY player can trigger dhappa (not just current-turn player)
   socket.on('trigger_dhappa', ({ roomCode }) => {
     const room = rooms[roomCode];
-    if (!room || room.status !== 'playing') return;
+    if (!room || room.status !== 'playing' || room.dhappaInfo) return;
 
     const hand = room.hands[socket.id];
     if (!hand) return;
@@ -241,23 +337,163 @@ io.on('connection', (socket) => {
     hand.forEach((c) => {
       nameCounts[c.name] = (nameCounts[c.name] || 0) + 1;
     });
-    const hasDhappa = Object.values(nameCounts).some((count) => count >= 4);
-    if (!hasDhappa) return;
+    const has4Matching = Object.values(nameCounts).some((count) => count >= 4);
+    const player = room.players.find(p => p.id === socket.id);
 
-    // FIX #1: Set status to 'slappad' BEFORE the timeout fires
+    // Instant Validation
+    if (!has4Matching) {
+      // FALSE DHAPPA FLOW
+      if (player) {
+        if (!player.score) player.score = { total: 0 };
+        player.score.total -= 500;
+        player.sittingOutCount = 2;
+        
+        if (!player.stats) player.stats = { challengeAccuracy: 0, challengesAttempted: 0, timesCaught: 0 };
+        player.stats.timesCaught = (player.stats.timesCaught || 0) + 1;
+      }
+      
+      reshufflePlayerHand(roomCode, socket.id);
+
+      io.to(roomCode).emit('false_dhappa', { 
+        by: socket.id, 
+        players: room.players 
+      });
+
+      const curIdx = room.turnOrder.indexOf(socket.id);
+      const nxtIdx = (curIdx + 1) % room.turnOrder.length;
+      room.currentTurn = room.turnOrder[nxtIdx];
+      
+      io.to(roomCode).emit('turn_start', {
+        playerId: room.currentTurn,
+        passCount: room.passCount,
+      });
+      startTurnTimer(roomCode);
+      return;
+    }
+
+    const isDirtyHand = hand.length > 4 && room.settings.strictDhappa;
+    
     room.status = 'slappad';
-    room.slaps = [{ playerId: socket.id, timestamp: 0 }]; // Dhappa player is auto-first
+    room.dhappaInfo = {
+      by: socket.id,
+      isActuallyValid: !isDirtyHand,
+      challengers: [],
+      timer: null
+    };
+    room.slaps = [{ playerId: socket.id, timestamp: 0 }];
 
-    io.to(roomCode).emit('dhappa_triggered', { by: socket.id });
+    if (room.turnTimeout) {
+      clearTimeout(room.turnTimeout);
+      room.turnTimeout = null;
+    }
 
-    // Auto-close slap window after 3 seconds
-    setTimeout(() => {
+    io.to(roomCode).emit('dhappa_triggered', { 
+      by: socket.id,
+      challengeable: true 
+    });
+
+    // 1-second challenge window
+    room.dhappaInfo.timer = setTimeout(() => {
+      resolveDhappaChallenge(roomCode);
+    }, 1000);
+  });
+
+  const resolveDhappaChallenge = (roomCode) => {
+    const room = rooms[roomCode];
+    if (!room || !room.dhappaInfo) return;
+
+    const { by, isActuallyValid, challengers } = room.dhappaInfo;
+    
+    if (challengers.length > 0) {
+      if (isActuallyValid) {
+        challengers.forEach(cid => {
+          const c = room.players.find(p => p.id === cid);
+          if (c) {
+            if (!c.score) c.score = { total: 0 };
+            c.score.total -= 300;
+            c.hasClownFace = true;
+          }
+        });
+        
+        const dhappaPlayer = room.players.find(p => p.id === by);
+        if (dhappaPlayer) {
+          if (!dhappaPlayer.score) dhappaPlayer.score = { total: 0 };
+          dhappaPlayer.score.total += 200;
+        }
+
+        io.to(roomCode).emit('challenge_failed_summary', { 
+          challengers, 
+          dhappaBy: by,
+          players: room.players 
+        });
+
+        setTimeout(() => {
+          calculateScoresAndEndRound(roomCode);
+        }, 2000);
+      } else {
+        const dhappaPlayer = room.players.find(p => p.id === by);
+        if (dhappaPlayer) {
+          if (!dhappaPlayer.score) dhappaPlayer.score = { total: 0 };
+          dhappaPlayer.score.total -= 600;
+          
+          if (!dhappaPlayer.stats) dhappaPlayer.stats = { timesCaught: 0 };
+          dhappaPlayer.stats.timesCaught++;
+        }
+
+        const rewardPerChallenger = Math.floor(400 / challengers.length);
+        challengers.forEach(cid => {
+          const c = room.players.find(p => p.id === cid);
+          if (c) {
+            if (!c.score) c.score = { total: 0 };
+            c.score.total += rewardPerChallenger;
+            
+            if (!c.stats) c.stats = { challengesAttempted: 0, challengeAccuracy: 0 };
+            c.stats.challengesAttempted++;
+            c.stats.challengeAccuracy = (c.stats.challengeAccuracy || 0) + 1;
+          }
+        });
+
+        reshufflePlayerHand(roomCode, by);
+
+        io.to(roomCode).emit('challenge_success_summary', { 
+          challengers, 
+          dhappaBy: by,
+          players: room.players 
+        });
+
+        room.dhappaInfo = null;
+        room.status = 'playing';
+
+        io.to(roomCode).emit('turn_start', {
+          playerId: room.currentTurn,
+          passCount: room.passCount,
+        });
+        startTurnTimer(roomCode);
+      }
+    } else {
       calculateScoresAndEndRound(roomCode);
-    }, 3000);
+    }
+  };
+
+  // ─── Challenge Dhappa ─────────────────────────────────────────────────────
+  socket.on('challenge_dhappa', ({ roomCode }) => {
+    const room = rooms[roomCode];
+    if (!room || !room.dhappaInfo) return;
+    if (room.dhappaInfo.by === socket.id) return;
+    if (room.dhappaInfo.challengers.includes(socket.id)) return;
+
+    room.dhappaInfo.challengers.push(socket.id);
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) {
+      if (!player.stats) player.stats = { challengesAttempted: 0 };
+      player.stats.challengesAttempted++;
+    }
+
+    io.to(roomCode).emit('dhappa_challenged', { challenger: socket.id });
   });
 
   // ─── Register Slap ────────────────────────────────────────────────────────
-  // FIX #10: Guard against slaps outside of slappad state
   socket.on('register_slap', ({ roomCode, timestamp }) => {
     const room = rooms[roomCode];
     if (!room || room.status !== 'slappad') return;
@@ -269,7 +505,7 @@ io.on('connection', (socket) => {
   // ─── Score Calculation ────────────────────────────────────────────────────
   const calculateScoresAndEndRound = (roomCode) => {
     const room = rooms[roomCode];
-    if (!room || room.status !== 'slappad') return;
+    if (!room) return;
 
     const slaps = [...room.slaps].sort((a, b) => a.timestamp - b.timestamp);
     const numPlayers = room.players.length;
@@ -286,7 +522,8 @@ io.on('connection', (socket) => {
 
     const scores = {};
     slaps.forEach((slap, index) => {
-      scores[slap.playerId] = index < roundScores.length ? roundScores[index] : 0;
+      let score = index < roundScores.length ? roundScores[index] : 0;
+      scores[slap.playerId] = score;
     });
 
     room.players.forEach((p) => {
@@ -294,11 +531,13 @@ io.on('connection', (socket) => {
       if (!p.score) p.score = { round: 0, total: 0 };
       p.score.round = scores[p.id];
       p.score.total += scores[p.id];
+      
+      p.hasClownFace = p.hasClownFace || false;
     });
 
     room.status = 'summary';
+    room.dhappaInfo = null;
 
-    // FIX #17: Determine if the game is over
     const isGameOver = room.roundsCurrent >= room.roundsTotal;
 
     io.to(roomCode).emit('round_end', {
@@ -320,9 +559,15 @@ io.on('connection', (socket) => {
     room.players.forEach((p) => {
       if (!p.score) p.score = { round: 0, total: 0 };
       p.score.round = 0;
+      p.hasClownFace = false;
     });
 
     const isGameOver = room.roundsCurrent >= room.roundsTotal;
+
+    if (room.turnTimeout) {
+      clearTimeout(room.turnTimeout);
+      room.turnTimeout = null;
+    }
 
     io.to(roomCode).emit('round_end', {
       scores: {},
@@ -335,7 +580,6 @@ io.on('connection', (socket) => {
   };
 
   // ─── Disconnect ───────────────────────────────────────────────────────────
-  // FIX #5: Proper disconnect handling
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
 
@@ -347,23 +591,19 @@ io.on('connection', (socket) => {
       const disconnectedPlayer = room.players[playerIndex];
       room.players.splice(playerIndex, 1);
 
-      // Room is now empty — clean it up
       if (room.players.length === 0) {
         cleanupRoom(roomCode);
         break;
       }
 
-      // Host left — assign new host
       if (room.hostId === socket.id) {
         room.hostId = room.players[0].id;
       }
 
-      // Mid-game cleanup
       if (room.status === 'playing' || room.status === 'slappad') {
         room.turnOrder = room.turnOrder.filter((id) => id !== socket.id);
         delete room.hands[socket.id];
 
-        // Advance turn if it was this player's turn
         if (room.currentTurn === socket.id && room.turnOrder.length > 0) {
           room.currentTurn = room.turnOrder[0];
           if (room.status === 'playing') {
@@ -371,7 +611,14 @@ io.on('connection', (socket) => {
               playerId: room.currentTurn,
               passCount: room.passCount,
             });
+            startTurnTimer(roomCode);
           }
+        }
+
+        // Clear timeout if everyone left or game state changes
+        if (room.players.length < 2 && room.turnTimeout) {
+          clearTimeout(room.turnTimeout);
+          room.turnTimeout = null;
         }
 
         // Abort if too few players remain

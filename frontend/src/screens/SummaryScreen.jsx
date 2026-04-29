@@ -7,6 +7,7 @@ const SummaryScreen = () => {
   const { gameState, updateGameState } = useGame();
 
   const isHost = gameState?.hostId === socket?.id;
+  const isDhappaByMe = gameState.dhappaBy === socket?.id;
 
   React.useEffect(() => {
     if (!socket) return;
@@ -15,7 +16,7 @@ const SummaryScreen = () => {
     const handleGameStarted = (data) => {
       // FIX #3: Functional updater
       updateGameState((prev) => ({
-        status: data.currentTurn === socket?.id ? 'cover' : 'playing',
+        status: 'playing',
         turnOrder: data.turnOrder || [],
         currentTurn: data.currentTurn,
         maxPasses: data.maxPasses || 0,
@@ -31,7 +32,10 @@ const SummaryScreen = () => {
     };
 
     socket.on('game_started', handleGameStarted);
-    return () => socket.off('game_started', handleGameStarted);
+
+    return () => {
+      socket.off('game_started', handleGameStarted);
+    };
   }, [socket, updateGameState]);
 
   const handleNextRound = () => {
@@ -112,11 +116,19 @@ const SummaryScreen = () => {
                   <div>
                     <div className="flex items-center gap-1">
                       {index === 0 && <span className="text-xl">👑</span>}
+                      {player.hasClownFace && <span className="text-xl">🤡</span>}
                       <span className="text-3xl text-[#2C1810] leading-none" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
                         {player.name}
                       </span>
                     </div>
-                    {rankBadge}
+                    <div className="flex flex-wrap gap-1">
+                      {rankBadge}
+                      {player.sittingOutCount > 0 && (
+                        <span className="text-[10px] bg-black text-white px-1 rounded uppercase block leading-none py-0.5 mt-1 border border-white">
+                          Sitting Out ({player.sittingOutCount})
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className={`text-3xl text-center ${roundScore > 0 ? 'text-green-700' : (roundScore < 0 ? 'text-red-700' : 'text-[#2C1810]')}`} style={{ fontFamily: 'Patrick Hand, cursive' }}>
@@ -130,40 +142,45 @@ const SummaryScreen = () => {
               );
             })}
           </div>
+
         </div>
 
         {/* Action Buttons */}
         <div className="space-y-4">
           {isHost ? (
-            roundsLeft > 0 ? (
-              <button
-                onClick={handleNextRound}
-                className="w-full bg-[#D2691E] border-4 border-[#2C1810] px-8 py-5 text-3xl text-[#FFF8E7] shadow-lg transform hover:scale-105 transition-transform active:scale-95"
-                style={{
-                  fontFamily: 'Caveat, cursive',
-                  fontWeight: 700,
-                  transform: 'rotate(-0.5deg)',
-                  boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.4)'
-                }}>
-                Next Round ({roundsLeft} left)
-              </button>
-            ) : (
-              <button
-                onClick={() => updateGameState({ status: 'results' })}
-                className="w-full bg-[#FFF8E7] border-4 border-[#2C1810] px-8 py-5 text-3xl text-[#2C1810] shadow-lg transform hover:scale-105 transition-transform active:scale-95"
-                style={{
-                  fontFamily: 'Caveat, cursive',
-                  fontWeight: 700,
-                  transform: 'rotate(0.5deg)',
-                  boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.3)'
-                }}>
-                See Final Results 🏆
-              </button>
-            )
+            <div className="flex flex-col gap-4">
+              {roundsLeft > 0 ? (
+                <button
+                  onClick={handleNextRound}
+                  className="w-full bg-[#D2691E] border-4 border-[#2C1810] px-8 py-5 text-3xl text-[#FFF8E7] shadow-lg transform hover:scale-105 transition-transform active:scale-95"
+                  style={{
+                    fontFamily: 'Caveat, cursive',
+                    fontWeight: 700,
+                    transform: 'rotate(-0.5deg)',
+                    boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.4)'
+                  }}>
+                  Next Round ({roundsLeft} left)
+                </button>
+              ) : (
+                <button
+                  onClick={() => updateGameState({ status: 'results' })}
+                  className="w-full bg-[#FFF8E7] border-4 border-[#2C1810] px-8 py-5 text-3xl text-[#2C1810] shadow-lg transform hover:scale-105 transition-transform active:scale-95"
+                  style={{
+                    fontFamily: 'Caveat, cursive',
+                    fontWeight: 700,
+                    transform: 'rotate(0.5deg)',
+                    boxShadow: '6px 6px 0px rgba(44, 24, 16, 0.3)'
+                  }}>
+                  See Final Results 🏆
+                </button>
+              )}
+            </div>
           ) : (
-            <p className="text-center text-[#2C1810] font-bold py-4 text-2xl animate-pulse" style={{ fontFamily: 'Caveat, cursive' }}>
-              Waiting for host...
-            </p>
+            <div className="flex flex-col gap-4">
+              <p className="text-center text-[#2C1810] font-bold py-4 text-2xl animate-pulse" style={{ fontFamily: 'Caveat, cursive' }}>
+                Waiting for host...
+              </p>
+            </div>
           )}
         </div>
       </div>

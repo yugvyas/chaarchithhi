@@ -6,7 +6,6 @@ import { GameProvider, useGame } from './context/GameContext';
 
 import LandingScreen from './screens/LandingScreen';
 import LobbyScreen from './screens/LobbyScreen';
-import CoverScreen from './screens/CoverScreen';
 import GameScreen from './screens/GameScreen';
 import SlapPadScreen from './screens/SlapPadScreen';
 import SummaryScreen from './screens/SummaryScreen';
@@ -19,7 +18,6 @@ const AppRouter = () => {
 
   switch (gameState.status) {
     case 'lobby': return <LobbyScreen />;
-    case 'cover': return <CoverScreen />;
     case 'playing': return <GameScreen />;
     case 'slappad': return <SlapPadScreen />;
     case 'summary': return <SummaryScreen />;
