@@ -51,6 +51,12 @@ io.on('connection', (socket) => {
       turnTimeout: null,
       settings: {
         strictDhappa: false, // "Dirty Hand" rule: true = must have exactly 4 cards
+        rounds: 3,
+        turnTimeLimit: 20000,
+        falseDhappaPenalty: true,
+        challengeSystem: true,
+        negativeScores: false,
+        maxPassesMultiplier: 10,
       },
       dhappaInfo: null,
     };
@@ -123,7 +129,43 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room || room.hostId !== socket.id) return;
     room.settings = { ...room.settings, ...settings };
+    room.roundsTotal = room.settings.rounds; // Sync roundsTotal
     io.to(roomCode).emit('settings_updated', { settings: room.settings });
+  });
+
+  // ─── Player Management ─────────────────────────────────────────────────────
+  socket.on('kick_player', ({ roomCode, playerId }) => {
+    const room = rooms[roomCode];
+    if (!room || room.hostId !== socket.id) return;
+    
+    // Find the player to kick
+    const playerIndex = room.players.findIndex(p => p.id === playerId);
+    if (playerIndex === -1 || playerId === socket.id) return; // Cannot kick oneself
+    
+    const kickedPlayerName = room.players[playerIndex].name;
+    room.players.splice(playerIndex, 1);
+    
+    // Notify the kicked player specifically
+    io.to(playerId).emit('kicked', { message: 'You have been kicked from the room.' });
+    // Make them leave the socket room
+    const targetSocket = io.sockets.sockets.get(playerId);
+    if (targetSocket) {
+      targetSocket.leave(roomCode);
+    }
+    
+    io.to(roomCode).emit('player_updated', { players: room.players });
+    io.to(roomCode).emit('notification', { message: `${kickedPlayerName} was kicked from the room.` });
+  });
+
+  socket.on('transfer_host', ({ roomCode, newHostId }) => {
+    const room = rooms[roomCode];
+    if (!room || room.hostId !== socket.id) return;
+    
+    const newHostExists = room.players.some(p => p.id === newHostId);
+    if (!newHostExists) return;
+    
+    room.hostId = newHostId;
+    io.to(roomCode).emit('host_changed', { newHostId });
   });
 
   // ─── Start Game / Next Round ───────────────────────────────────────────────
@@ -157,7 +199,7 @@ io.on('connection', (socket) => {
     room.roundsCurrent += 1;
     room.turnOrder = room.players.map((p) => p.id);
     room.currentTurn = room.turnOrder[0];
-    room.maxPasses = room.players.length * 10;
+    room.maxPasses = room.players.length * room.settings.maxPassesMultiplier;
     room.passCount = 0;
     room.slaps = [];
 
@@ -238,7 +280,7 @@ io.on('connection', (socket) => {
       // Simulate pass_card
       console.log(`Auto-passing card ${cardId} for player ${currentPlayerId} in room ${roomCode}`);
       handlePassCard(roomCode, currentPlayerId, cardId);
-    }, 10000); // 10 seconds
+    }, room.settings.turnTimeLimit > 0 ? room.settings.turnTimeLimit : 2147483647); // large number if no limit
   };
 
   const handlePassCard = (roomCode, playerId, cardId) => {
@@ -343,7 +385,7 @@ io.on('connection', (socket) => {
     // Instant Validation
     if (!has4Matching) {
       // FALSE DHAPPA FLOW
-      if (player) {
+      if (player && room.settings.falseDhappaPenalty) {
         if (!player.score) player.score = { total: 0 };
         player.score.total -= 500;
         player.sittingOutCount = 2;
@@ -389,13 +431,19 @@ io.on('connection', (socket) => {
 
     io.to(roomCode).emit('dhappa_triggered', { 
       by: socket.id,
-      challengeable: true 
+      challengeable: room.settings.challengeSystem 
     });
 
-    // 1-second challenge window
+    // If challenge system is off, skip the challenge window and go straight to scoring
+    if (!room.settings.challengeSystem) {
+      calculateScoresAndEndRound(roomCode);
+      return;
+    }
+
+    // 5-second challenge window
     room.dhappaInfo.timer = setTimeout(() => {
       resolveDhappaChallenge(roomCode);
-    }, 1000);
+    }, 5000);
   });
 
   const resolveDhappaChallenge = (roomCode) => {
@@ -531,6 +579,11 @@ io.on('connection', (socket) => {
       if (!p.score) p.score = { round: 0, total: 0 };
       p.score.round = scores[p.id];
       p.score.total += scores[p.id];
+      
+      // Handle negative scores setting
+      if (!room.settings.negativeScores && p.score.total < 0) {
+        p.score.total = 0;
+      }
       
       p.hasClownFace = p.hasClownFace || false;
     });

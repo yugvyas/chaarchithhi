@@ -2,14 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
 import thappaSound from '../soundeffects/thappasoundeffect.mp3';
-import passSound from '../soundeffects/passingsoundeffect.mp3';
+
 
 const GameScreen = () => {
   const { socket } = useSocket();
   const { gameState, updateGameState } = useGame();
 
   const [selectedCardId, setSelectedCardId] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(10);
+  const initialTime = (gameState.settings?.turnTimeLimit ?? 20000) / 1000;
+  const [timeLeft, setTimeLeft] = useState(initialTime);
   const [feedbackMessage, setFeedbackMessage] = useState(null);
   const [showFalseDhappa, setShowFalseDhappa] = useState(null); // { by: string, name: string }
   const timerIntervalRef = useRef(null);
@@ -43,8 +44,9 @@ const GameScreen = () => {
         status: 'playing',
       }));
       
-      // Reset timer
-      setTimeLeft(10);
+      // Reset timer using the latest settings from ref
+      const newInitialTime = (gameStateRef.current.settings?.turnTimeLimit ?? 20000) / 1000;
+      setTimeLeft(newInitialTime);
     };
 
     const handleHand = (data) => {
@@ -129,7 +131,11 @@ const GameScreen = () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     
     timerIntervalRef.current = setInterval(() => {
-      setTimeLeft((prev) => Math.max(0, prev - 1));
+      setTimeLeft((prev) => {
+        const limit = gameStateRef.current.settings?.turnTimeLimit ?? 20000;
+        if (limit === 0) return 0; // No timer decrease if no limit
+        return Math.max(0, prev - 1);
+      });
     }, 1000);
 
     return () => {
@@ -139,7 +145,6 @@ const GameScreen = () => {
 
   const handlePass = () => {
     if (!selectedCardId || !isMyTurn) return;
-    new Audio(passSound).play().catch(err => console.log("Audio play failed", err));
     socket.emit('pass_card', { roomCode: gameState.roomCode, cardId: selectedCardId });
     setSelectedCardId(null);
   };
@@ -241,17 +246,17 @@ const GameScreen = () => {
                   }}>
                   
                   {/* Turn Timer Progress Border */}
-                  {isActive && (
+                  {isActive && (gameState.settings?.turnTimeLimit ?? 20000) > 0 && (
                     <div 
                       className="absolute bottom-0 left-0 h-1 bg-[#D2691E] transition-all duration-1000 ease-linear"
-                      style={{ width: `${(timeLeft / 10) * 100}%` }}
+                      style={{ width: `${(timeLeft / ((gameState.settings?.turnTimeLimit ?? 20000) / 1000)) * 100}%` }}
                     />
                   )}
-                  {isActive && (
+                  {isActive && (gameState.settings?.turnTimeLimit ?? 20000) > 0 && (
                     <div 
                       className="absolute top-0 left-0 w-full h-full border-[6px] border-[#D2691E] opacity-20 pointer-events-none"
                       style={{ 
-                        clipPath: `inset(0 ${100 - (timeLeft / 10) * 100}% 0 0)` 
+                        clipPath: `inset(0 ${100 - (timeLeft / ((gameState.settings?.turnTimeLimit ?? 20000) / 1000)) * 100}% 0 0)` 
                       }}
                     />
                   )}
@@ -259,7 +264,7 @@ const GameScreen = () => {
                   <div className="text-lg text-[#2C1810] whitespace-nowrap text-center relative z-10"
                        style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
                     {player?.name}
-                    {isActive && (
+                    {isActive && (gameState.settings?.turnTimeLimit ?? 20000) > 0 && (
                       <span className="ml-2 text-xs opacity-60 font-mono">
                         {timeLeft}s
                       </span>

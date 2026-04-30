@@ -6,7 +6,7 @@ import { Check, Copy } from 'lucide-react';
 
 const LobbyScreen = () => {
   const { socket } = useSocket();
-  const { gameState, updateGameState } = useGame();
+  const { gameState, updateGameState, resetGame } = useGame();
 
   const [chithhiName, setChithhiName] = useState('');
   const [copied, setCopied] = useState(false);
@@ -67,6 +67,11 @@ const LobbyScreen = () => {
       setTimeout(() => updateGameState({ status: 'lobby' }), 2000);
     };
 
+    const handleKicked = (data) => {
+      alert(data.message);
+      resetGame();
+    };
+
     socket.on('player_updated', handlePlayerUpdated);
     socket.on('player_joined', handlePlayerJoined);
     socket.on('player_left', handlePlayerLeft);
@@ -83,6 +88,7 @@ const LobbyScreen = () => {
       socket.off('game_started', handleGameStarted);
       socket.off('error', handleError);
       socket.off('game_aborted', handleGameAborted);
+      socket.off('kicked', handleKicked);
     };
   }, [socket, updateGameState]);
 
@@ -161,20 +167,101 @@ const LobbyScreen = () => {
 
         {/* Game Settings (Host Only) */}
         {isHost && (
-          <div className="mt-4 bg-[#F5E6D3] border-4 border-[#2C1810] p-3 shadow-md transform rotate-1 flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="text-[#2C1810] font-bold text-sm uppercase tracking-tight">Rule: Strict 4-Card Dhappa</span>
-              <span className="text-[#8B6F47] text-[10px] leading-tight">Must have exactly 4 cards to Dhappa. 5 is a "dirty hand".</span>
+          <div className="mt-4 bg-[#F5E6D3] border-4 border-[#2C1810] p-3 shadow-md transform rotate-1 flex flex-col gap-3 max-h-48 overflow-y-auto hide-scrollbar">
+            <h3 className="text-[#2C1810] font-bold text-xl uppercase tracking-tight mb-1 text-center border-b-2 border-[#2C1810] pb-1" style={{ fontFamily: 'Caveat, cursive' }}>Host Controls</h3>
+            
+            {/* Rounds */}
+            <div className="flex justify-between items-center">
+              <span className="text-[#2C1810] font-bold text-sm">Rounds</span>
+              <select 
+                value={gameState.settings?.rounds || 3} 
+                onChange={(e) => socket.emit('update_settings', { roomCode: gameState.roomCode, settings: { rounds: Number(e.target.value) }})}
+                className="bg-[#FFF8E7] border-2 border-[#2C1810] text-sm font-bold px-1 outline-none"
+              >
+                <option value={3}>3 Rounds</option>
+                <option value={5}>5 Rounds</option>
+                <option value={7}>7 Rounds</option>
+                <option value={10}>10 Rounds</option>
+              </select>
             </div>
-            <button
-              onClick={() => socket.emit('update_settings', { 
-                roomCode: gameState.roomCode, 
-                settings: { strictDhappa: !gameState.settings?.strictDhappa } 
-              })}
-              className={`w-12 h-6 rounded-full transition-colors relative border-2 border-[#2C1810] ${gameState.settings?.strictDhappa ? 'bg-[#D2691E]' : 'bg-[#8B6F47]/20'}`}
-            >
-              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${gameState.settings?.strictDhappa ? 'left-6' : 'left-0.5'}`} />
-            </button>
+
+            {/* Passes Multiplier */}
+            <div className="flex justify-between items-center">
+              <span className="text-[#2C1810] font-bold text-sm">Passes per player</span>
+              <select 
+                value={gameState.settings?.maxPassesMultiplier ?? 10} 
+                onChange={(e) => socket.emit('update_settings', { roomCode: gameState.roomCode, settings: { maxPassesMultiplier: Number(e.target.value) }})}
+                className="bg-[#FFF8E7] border-2 border-[#2C1810] text-sm font-bold px-1 outline-none"
+              >
+                <option value={5}>5x</option>
+                <option value={10}>10x</option>
+                <option value={15}>15x</option>
+                <option value={20}>20x</option>
+              </select>
+            </div>
+
+            {/* Turn Time Limit */}
+            <div className="flex justify-between items-center">
+              <span className="text-[#2C1810] font-bold text-sm">Turn Time Limit</span>
+              <select 
+                value={gameState.settings?.turnTimeLimit ?? 20000} 
+                onChange={(e) => socket.emit('update_settings', { roomCode: gameState.roomCode, settings: { turnTimeLimit: Number(e.target.value) }})}
+                className="bg-[#FFF8E7] border-2 border-[#2C1810] text-sm font-bold px-1 outline-none"
+              >
+                <option value={5000}>5 sec</option>
+                <option value={10000}>10 sec</option>
+                <option value={15000}>15 sec</option>
+                <option value={20000}>20 sec</option>
+                <option value={0}>No Limit</option>
+              </select>
+            </div>
+
+            <hr className="border-[#2C1810]" />
+
+            {/* Strict Dhappa Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[#2C1810] font-bold text-sm">Strict 4-Card Dhappa</span>
+              <button
+                onClick={() => socket.emit('update_settings', { roomCode: gameState.roomCode, settings: { strictDhappa: !gameState.settings?.strictDhappa } })}
+                className={`w-10 h-5 rounded-full transition-colors relative border-2 border-[#2C1810] shrink-0 ${gameState.settings?.strictDhappa ? 'bg-[#D2691E]' : 'bg-[#8B6F47]/20'}`}
+              >
+                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${gameState.settings?.strictDhappa ? 'left-5' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            {/* False Dhappa Penalty Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[#2C1810] font-bold text-sm">False Dhappa Penalty</span>
+              <button
+                onClick={() => socket.emit('update_settings', { roomCode: gameState.roomCode, settings: { falseDhappaPenalty: gameState.settings?.falseDhappaPenalty ?? true } })}
+                className={`w-10 h-5 rounded-full transition-colors relative border-2 border-[#2C1810] shrink-0 ${gameState.settings?.falseDhappaPenalty !== false ? 'bg-[#D2691E]' : 'bg-[#8B6F47]/20'}`}
+              >
+                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${gameState.settings?.falseDhappaPenalty !== false ? 'left-5' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            {/* Challenge System Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[#2C1810] font-bold text-sm">Challenge System</span>
+              <button
+                onClick={() => socket.emit('update_settings', { roomCode: gameState.roomCode, settings: { challengeSystem: gameState.settings?.challengeSystem ?? true } })}
+                className={`w-10 h-5 rounded-full transition-colors relative border-2 border-[#2C1810] shrink-0 ${gameState.settings?.challengeSystem !== false ? 'bg-[#D2691E]' : 'bg-[#8B6F47]/20'}`}
+              >
+                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${gameState.settings?.challengeSystem !== false ? 'left-5' : 'left-0.5'}`} />
+              </button>
+            </div>
+
+            {/* Negative Scores Toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-[#2C1810] font-bold text-sm">Allow Negative Scores</span>
+              <button
+                onClick={() => socket.emit('update_settings', { roomCode: gameState.roomCode, settings: { negativeScores: gameState.settings?.negativeScores ?? false } })}
+                className={`w-10 h-5 rounded-full transition-colors relative border-2 border-[#2C1810] shrink-0 ${gameState.settings?.negativeScores ? 'bg-[#D2691E]' : 'bg-[#8B6F47]/20'}`}
+              >
+                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${gameState.settings?.negativeScores ? 'left-5' : 'left-0.5'}`} />
+              </button>
+            </div>
+
           </div>
         )}
       </div>
@@ -200,13 +287,31 @@ const LobbyScreen = () => {
                 <span className="text-sm border-2 border-[#D2691E] text-[#D2691E] px-2 py-0.5 font-bold transform -rotate-3 bg-[#FFF8E7]">Host</span>
               )}
             </div>
-            {player.chithhiName ? (
-              <div className="bg-[#E8F5E9] border-2 border-[#2E7D32] px-3 py-1 transform rotate-2">
-                <span className="text-lg text-[#2E7D32] font-bold">Ready</span>
-              </div>
-            ) : (
-              <span className="text-lg text-[#8B6F47] italic font-bold">Choosing...</span>
-            )}
+            <div className="flex flex-col items-end gap-1">
+              {player.chithhiName ? (
+                <div className="bg-[#E8F5E9] border-2 border-[#2E7D32] px-3 py-0.5 transform rotate-2">
+                  <span className="text-sm text-[#2E7D32] font-bold">Ready</span>
+                </div>
+              ) : (
+                <span className="text-sm text-[#8B6F47] italic font-bold">Choosing...</span>
+              )}
+              {isHost && player.id !== socket?.id && (
+                <div className="flex gap-1 mt-1">
+                  <button 
+                    onClick={() => socket.emit('transfer_host', { roomCode: gameState.roomCode, newHostId: player.id })} 
+                    className="bg-[#D2691E] border-2 border-[#2C1810] text-[#FFF8E7] px-1.5 py-0.5 text-[10px] font-bold transform hover:scale-105 active:scale-95"
+                  >
+                    Make Host
+                  </button>
+                  <button 
+                    onClick={() => socket.emit('kick_player', { roomCode: gameState.roomCode, playerId: player.id })} 
+                    className="bg-red-600 border-2 border-[#2C1810] text-white px-1.5 py-0.5 text-[10px] font-bold transform hover:scale-105 active:scale-95"
+                  >
+                    Kick
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ))}
 

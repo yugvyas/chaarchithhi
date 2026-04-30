@@ -8,7 +8,7 @@ const SlapPadScreen = () => {
   const { gameState, updateGameState } = useGame();
 
   const [slapped, setSlapped] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(1000); // 1 second window
+  const [timeLeft, setTimeLeft] = useState(5000); // 5 second window
   const [challengeWindowOpen, setChallengeWindowOpen] = useState(true);
   const [challengeOutcome, setChallengeOutcome] = useState(null); // { type: 'wrong' | 'caught', challengers: [] }
   const [myChallengeStatus, setMyChallengeStatus] = useState(null); // 'challenged' | 'late'
@@ -22,10 +22,10 @@ const SlapPadScreen = () => {
     const startTime = Date.now();
     timerRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const remaining = Math.max(0, 1000 - elapsed);
+      const remaining = Math.max(0, 5000 - elapsed);
       setTimeLeft(remaining);
       
-      if (elapsed >= 1000) {
+      if (elapsed >= 5000) {
         setChallengeWindowOpen(false);
         clearInterval(timerRef.current);
       }
@@ -143,7 +143,7 @@ const SlapPadScreen = () => {
                     Challenge or Slap in {(timeLeft/1000).toFixed(1)}s
                   </p>
                   <div className="w-full h-2 bg-black/10 mt-1 rounded-full overflow-hidden">
-                    <div className="h-full bg-red-600 transition-all duration-16 linear" style={{ width: `${(timeLeft/1000) * 100}%` }} />
+                    <div className="h-full bg-red-600 transition-all duration-16 linear" style={{ width: `${(timeLeft/5000) * 100}%` }} />
                   </div>
                </div>
              )}
