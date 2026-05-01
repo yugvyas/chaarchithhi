@@ -23,6 +23,7 @@ export const GameProvider = ({ children }) => {
     isGameOver: false,
     roundsCurrent: 0,
     roundsTotal: 3,
+    rankUps: null,
   });
 
   // FIX #3: Support both plain-object and functional-updater forms
@@ -54,6 +55,7 @@ export const GameProvider = ({ children }) => {
       isGameOver: false,
       roundsCurrent: 0,
       roundsTotal: 3,
+      rankUps: null,
     }));
   };
 

@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '../context/SocketContext';
 import { useGame } from '../context/GameContext';
+import { supabase } from '../supabase';
+import { getRank } from '../ranks';
 
 const LandingScreen = () => {
   const { socket, isConnected } = useSocket();
@@ -10,6 +12,7 @@ const LandingScreen = () => {
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState(null); // 'create' | 'join'
   const [error, setError] = useState('');
+  const [userRank, setUserRank] = useState(null);
 
   // FIX #3 / #4: Use refs so socket handlers always read the latest values
   // without re-registering listeners on every keystroke
@@ -17,6 +20,29 @@ const LandingScreen = () => {
   const roomCodeRef = useRef(roomCode);
   useEffect(() => { nameRef.current = name; }, [name]);
   useEffect(() => { roomCodeRef.current = roomCode; }, [roomCode]);
+
+  useEffect(() => {
+    import('../supabase').then(({ supabase }) => {
+      const fetchRank = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('rating, username')
+          .eq('id', user.id)
+          .single();
+          
+        if (profile) {
+          setName(profile.username || user.user_metadata?.full_name || '');
+          const points = profile.rating || 1000;
+          const currentRank = getRank(points);
+          setUserRank(`${currentRank.emoji} ${currentRank.title} • ${points.toLocaleString()} pts`);
+        }
+      };
+      if (isConnected) fetchRank();
+    });
+  }, [isConnected]);
 
   useEffect(() => {
     if (!socket) return;
@@ -89,8 +115,29 @@ const LandingScreen = () => {
            backgroundBlendMode: 'multiply'
          }}>
 
-      <div className="max-w-md w-full flex flex-col items-center gap-12">
+      {/* Top Buttons */}
+      <div className="absolute top-6 left-6 z-30">
+        <button
+          onClick={() => updateGameState({ status: 'profile' })}
+          className="bg-[#FFF8E7] border-3 border-[#2C1810] p-3 shadow-md transform -rotate-3 hover:scale-110 transition-transform active:scale-95 flex items-center justify-center"
+          style={{ boxShadow: '4px 4px 0px rgba(44, 24, 16, 0.3)' }}
+        >
+          <span className="text-3xl leading-none">👤</span>
+        </button>
+      </div>
 
+      <div className="absolute top-6 right-20 z-30">
+        <button
+          onClick={() => updateGameState({ status: 'leaderboard' })}
+          className="bg-[#FFF8E7] border-3 border-[#2C1810] p-3 shadow-md transform rotate-3 hover:scale-110 transition-transform active:scale-95 flex items-center justify-center"
+          style={{ boxShadow: '4px 4px 0px rgba(44, 24, 16, 0.3)' }}
+        >
+          <span className="text-3xl leading-none">🏆</span>
+        </button>
+      </div>
+
+      <div className="max-w-md w-full flex flex-col items-center gap-12 relative z-10">
+      
         {/* Title */}
         <div className="relative z-10">
           <h1 className="text-6xl text-[#2C1810] tracking-wide transform -rotate-1"
@@ -191,11 +238,18 @@ const LandingScreen = () => {
 
       </div>
 
-      {!isConnected && (
-        <div className="absolute bottom-4 text-[#2C1810] font-bold opacity-50 z-20" style={{ fontFamily: 'Caveat, cursive', fontSize: '1.25rem' }}>
+      {!isConnected ? (
+        <div className="absolute bottom-4 text-[#2C1810] font-bold opacity-50 z-20 animate-pulse" style={{ fontFamily: 'Caveat, cursive', fontSize: '1.5rem' }}>
           Connecting to server...
         </div>
-      )}
+      ) : userRank ? (
+        <div className="absolute bottom-6 bg-[#F5E6D3] border-3 border-[#2C1810] px-6 py-2 transform rotate-1 shadow-md z-20"
+             style={{ boxShadow: '3px 3px 0px rgba(44, 24, 16, 0.2)' }}>
+          <span className="text-2xl text-[#2C1810]" style={{ fontFamily: 'Caveat, cursive', fontWeight: 700 }}>
+            {userRank}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 };

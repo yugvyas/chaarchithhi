@@ -2,6 +2,14 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
+const { createClient } = require('@supabase/supabase-js');
+const { getRank } = require('./ranks');
+require('dotenv').config();
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 const app = express();
 app.use(cors());
@@ -13,6 +21,41 @@ const io = new Server(server, {
     origin: '*',
     methods: ['GET', 'POST'],
   },
+});
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    console.log('Socket connect rejected: No token provided');
+    return next(new Error('Authentication error: No token provided'));
+  }
+  
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret) {
+    console.warn('WARNING: SUPABASE_JWT_SECRET is not set in backend/.env');
+    return next(new Error('Server configuration error'));
+  }
+
+  // Use Supabase client to verify token instead of jsonwebtoken
+  // This avoids base64 encoding issues with the JWT secret
+  if (!supabase) {
+    return next(new Error('Server configuration error: Supabase not initialized'));
+  }
+
+  supabase.auth.getUser(token).then(({ data, error }) => {
+    if (error || !data.user) {
+      console.log('Socket connect rejected: Invalid token', error?.message);
+      return next(new Error('Authentication error: Invalid token'));
+    }
+    
+    // Store user data in socket for later use
+    socket.user = {
+      sub: data.user.id,
+      email: data.user.email,
+      ...data.user.user_metadata
+    };
+    next();
+  });
 });
 
 // Game State (In-Memory)
@@ -37,7 +80,7 @@ io.on('connection', (socket) => {
     rooms[roomCode] = {
       roomCode,
       hostId: socket.id,
-      players: [{ id: socket.id, name: playerName, chithhiName: null }],
+      players: [{ id: socket.id, userId: socket.user?.sub, name: playerName, chithhiName: null }],
       status: 'lobby',
       roundsTotal: 3,       // configurable – default 3 rounds
       roundsCurrent: 0,
@@ -85,7 +128,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    room.players.push({ id: socket.id, name: playerName, chithhiName: null });
+    room.players.push({ id: socket.id, userId: socket.user?.sub, name: playerName, chithhiName: null });
     socket.join(roomCode);
 
     // FIX #4: Send 'room_joined' only to the new joiner (not broadcast)
@@ -420,9 +463,13 @@ io.on('connection', (socket) => {
       by: socket.id,
       isActuallyValid: !isDirtyHand,
       challengers: [],
-      timer: null
+      timer: null,
+      startTime: Date.now()
     };
     room.slaps = [{ playerId: socket.id, timestamp: 0 }];
+    
+    if (!player.stats) player.stats = {};
+    player.stats.dhappasMade = (player.stats.dhappasMade || 0) + 1;
 
     if (room.turnTimeout) {
       clearTimeout(room.turnTimeout);
@@ -547,11 +594,20 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'slappad') return;
     if (!room.slaps.some((s) => s.playerId === socket.id)) {
       room.slaps.push({ playerId: socket.id, timestamp });
+      
+      const player = room.players.find(p => p.id === socket.id);
+      if (player && room.dhappaInfo) {
+        const slapTimeMs = Date.now() - room.dhappaInfo.startTime;
+        if (!player.stats) player.stats = {};
+        if (!player.stats.fastestSlap || slapTimeMs < player.stats.fastestSlap) {
+          player.stats.fastestSlap = slapTimeMs;
+        }
+      }
     }
   });
 
   // ─── Score Calculation ────────────────────────────────────────────────────
-  const calculateScoresAndEndRound = (roomCode) => {
+  const calculateScoresAndEndRound = async (roomCode) => {
     const room = rooms[roomCode];
     if (!room) return;
 
@@ -593,6 +649,11 @@ io.on('connection', (socket) => {
 
     const isGameOver = room.roundsCurrent >= room.roundsTotal;
 
+    let rankUps = null;
+    if (isGameOver) {
+      rankUps = await saveGameToDatabase(roomCode);
+    }
+
     io.to(roomCode).emit('round_end', {
       scores,
       players: room.players,
@@ -600,10 +661,11 @@ io.on('connection', (socket) => {
       isGameOver,
       roundsCurrent: room.roundsCurrent,
       roundsTotal: room.roundsTotal,
+      rankUps,
     });
   };
 
-  const endRound = (roomCode, dhappaPlayerId) => {
+  const endRound = async (roomCode, dhappaPlayerId) => {
     if (dhappaPlayerId !== null) return;
     const room = rooms[roomCode];
     if (!room) return;
@@ -617,6 +679,11 @@ io.on('connection', (socket) => {
 
     const isGameOver = room.roundsCurrent >= room.roundsTotal;
 
+    let rankUps = null;
+    if (isGameOver) {
+      rankUps = await saveGameToDatabase(roomCode);
+    }
+
     if (room.turnTimeout) {
       clearTimeout(room.turnTimeout);
       room.turnTimeout = null;
@@ -629,7 +696,123 @@ io.on('connection', (socket) => {
       isGameOver,
       roundsCurrent: room.roundsCurrent,
       roundsTotal: room.roundsTotal,
+      rankUps,
     });
+  };
+
+  const saveGameToDatabase = async (roomCode) => {
+    const room = rooms[roomCode];
+    if (!room || !supabase) return;
+
+    try {
+      const sortedPlayers = [...room.players].sort((a, b) => (b.score?.total || 0) - (a.score?.total || 0));
+      const winnerId = sortedPlayers[0]?.userId;
+
+      // 1. Insert into game_history
+      const { data: gameData, error: gameError } = await supabase
+        .from('game_history')
+        .insert({
+          room_code: roomCode,
+          total_rounds: room.roundsTotal,
+          winner_id: winnerId
+        })
+        .select()
+        .single();
+
+      if (gameError) throw gameError;
+
+      const gameId = gameData.id;
+
+      // 2. Prepare game_players records
+      const playerRecords = sortedPlayers.map((p, index) => ({
+        game_id: gameId,
+        user_id: p.userId,
+        total_score: p.score?.total || 0,
+        final_rank: index + 1,
+        total_dhappas: p.stats?.dhappasMade || 0,
+        false_dhappas: p.stats?.timesCaught || 0,
+        successful_challenges: p.stats?.challengeAccuracy || 0,
+        fastest_slap_ms: p.stats?.fastestSlap || null
+      })).filter(r => r.user_id); // Only save authenticated users
+
+      if (playerRecords.length > 0) {
+        const { error: playersError } = await supabase
+          .from('game_players')
+          .insert(playerRecords);
+        if (playersError) throw playersError;
+      }
+      
+      // --- STEP 3: UPDATE RATING AND PROFILES ---
+      const userIds = sortedPlayers.map(p => p.userId).filter(Boolean);
+      let rankUps = {}; // { playerId: { oldRank, newRank } }
+      
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, rating, xp, level')
+          .in('id', userIds);
+          
+        if (profiles) {
+          const profileMap = {};
+          profiles.forEach(p => profileMap[p.id] = p);
+          
+          const totalRating = profiles.reduce((sum, p) => sum + (p.rating || 1000), 0);
+          
+          const updates = sortedPlayers.filter(p => p.userId).map((p, index) => {
+            const isWinner = index === 0;
+            const isLast = index === sortedPlayers.length - 1;
+            const actualScore = isWinner ? 1 : (isLast ? 0 : 0.5);
+            
+            const oldProfile = profileMap[p.userId] || { rating: 1000, xp: 0, level: 1 };
+            const oldRating = oldProfile.rating || 1000;
+            const oldXp = oldProfile.xp || 0;
+            
+            // Opponent rating = average of OTHER players
+            const otherPlayersCount = profiles.length > 1 ? profiles.length - 1 : 1;
+            const opponentRating = profiles.length > 1 ? (totalRating - oldRating) / otherPlayersCount : oldRating;
+            
+            // Expected = 1 / (1 + 10^((opponent_rating - player_rating) / 400))
+            const expected = 1 / (1 + Math.pow(10, (opponentRating - oldRating) / 400));
+            // New Rating = Old Rating + 32 * (Actual - Expected)
+            const newRating = Math.round(oldRating + 32 * (actualScore - expected));
+            
+            const xpGained = isWinner ? 500 : (isLast ? 100 : 200);
+            const newXp = oldXp + xpGained;
+            const newLevel = Math.floor(newXp / 1000) + 1;
+            
+            // Check for Rank Up
+            const oldRank = getRank(oldRating);
+            const newRank = getRank(newRating);
+            if (newRank.title !== oldRank.title && newRating > oldRating) {
+              rankUps[p.id] = { oldRank, newRank };
+            }
+            
+            return {
+              id: p.userId,
+              rating: newRating,
+              xp: newXp,
+              level: newLevel
+            };
+          });
+          
+          // Update profiles
+          for (const update of updates) {
+            await supabase.from('profiles').update({
+              rating: update.rating,
+              xp: update.xp,
+              level: update.level
+            }).eq('id', update.id);
+          }
+        }
+      }
+      
+      console.log(`[DB] Game ${roomCode} saved. Profiles & Ratings updated.`);
+      return Object.keys(rankUps).length > 0 ? rankUps : null;
+    } catch (error) {
+      console.error("[DB] Error saving game to database:", error);
+      require('fs').appendFileSync('db_error.log', new Date().toISOString() + ' ' + (error.message || JSON.stringify(error)) + '\n');
+      return null;
+    }
   };
 
   // ─── Disconnect ───────────────────────────────────────────────────────────

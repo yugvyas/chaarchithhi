@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { useSocket } from '../context/SocketContext';
 
@@ -18,6 +18,19 @@ const ResultsScreen = () => {
     resetGame();
   };
 
+  const [showRankUp, setShowRankUp] = useState(
+    !!(gameState.rankUps && gameState.rankUps[socket?.id])
+  );
+
+  useEffect(() => {
+    if (showRankUp) {
+      const timer = setTimeout(() => {
+        setShowRankUp(false);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [showRankUp]);
+
   const [confettiPieces] = useState(() => 
     [...Array(30)].map((_, i) => ({
       id: i,
@@ -32,6 +45,36 @@ const ResultsScreen = () => {
       backgroundColor: ['#FFF8E7', '#F5E6D3', '#FFD93D', '#FF9A56'][Math.floor(Math.random() * 4)]
     }))
   );
+
+  if (showRankUp) {
+    const rankData = gameState.rankUps[socket?.id];
+    return (
+      <div className="fixed inset-0 z-[100] flex flex-col justify-center items-center overflow-hidden touch-none bg-gradient-to-br from-[#FFD700] via-[#FFA500] to-[#FF8C00]">
+        {/* Confetti */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+          {confettiPieces.map((piece) => (
+            <div key={piece.id} className="absolute border-2 border-[#2C1810] animate-confetti" style={{...piece, backgroundColor: 'white'}} />
+          ))}
+        </div>
+        
+        <div className="bg-[#FFF8E7] border-4 border-[#2C1810] p-10 transform -rotate-2 shadow-[12px_12px_0px_rgba(44,24,16,0.4)] text-center relative z-10 animate-in zoom-in duration-500 max-w-sm w-full mx-4">
+          <div className="text-7xl mb-6 animate-bounce">🎉</div>
+          <h1 className="text-6xl text-[#D2691E] mb-2 drop-shadow-md" style={{ fontFamily: 'Caveat, cursive', fontWeight: 900 }}>
+            RANK UP!!
+          </h1>
+          <p className="text-2xl text-[#8B6F47] mb-6 font-bold" style={{ fontFamily: 'Patrick Hand, cursive' }}>
+            You reached a new rank:
+          </p>
+          <div className="bg-[#F5E6D3] border-4 border-[#2C1810] p-4 transform rotate-2">
+            <div className="text-4xl mb-2">{rankData.newRank.emoji}</div>
+            <div className="text-3xl text-[#2C1810]" style={{ fontFamily: 'Caveat, cursive', fontWeight: 900 }}>
+              {rankData.newRank.title}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#8B6F47] relative overflow-hidden flex flex-col items-center justify-center p-6"
