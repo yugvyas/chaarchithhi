@@ -12,7 +12,7 @@ export const SocketProvider = ({ children, token }) => {
   useEffect(() => {
     if (!token) return;
     
-    const serverUrl = `http://${window.location.hostname}:3001`;
+    const serverUrl = import.meta.env.VITE_BACKEND_URL || `http://${window.location.hostname}:3001`;
 
     // FIX #15: Enable reconnection with sensible defaults
     const newSocket = io(serverUrl, {
