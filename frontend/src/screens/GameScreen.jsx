@@ -85,6 +85,20 @@ const GameScreen = () => {
       updateGameState({ settings: data.settings });
     };
 
+    const handleRoundEnd = (data) => {
+      updateGameState((prev) => ({
+        status: 'summary',
+        scores: data.scores || {},
+        players: data.players || prev.players,
+        slapOrder: data.slapOrder || [],
+        stalemate: data.stalemate || false,
+        isGameOver: data.isGameOver || false,
+        roundsCurrent: data.roundsCurrent ?? prev.roundsCurrent,
+        roundsTotal: data.roundsTotal ?? prev.roundsTotal,
+        rankUps: data.rankUps || null,
+      }));
+    };
+
     const handlePlayerSkipped = (data) => {
       const player = gameStateRef.current.players?.find(p => p.id === data.playerId);
       setFeedbackMessage({
@@ -111,6 +125,7 @@ const GameScreen = () => {
     socket.on('challenge_failed_summary', handleChallengeFailedSummary);
     socket.on('settings_updated', handleSettingsUpdated);
     socket.on('player_skipped', handlePlayerSkipped);
+    socket.on('round_end', handleRoundEnd);
     socket.on('game_aborted', handleGameAborted);
 
     return () => {
@@ -122,6 +137,7 @@ const GameScreen = () => {
       socket.off('challenge_failed_summary', handleChallengeFailedSummary);
       socket.off('settings_updated', handleSettingsUpdated);
       socket.off('player_skipped', handlePlayerSkipped);
+      socket.off('round_end', handleRoundEnd);
       socket.off('game_aborted', handleGameAborted);
     };
   }, [socket, updateGameState]);

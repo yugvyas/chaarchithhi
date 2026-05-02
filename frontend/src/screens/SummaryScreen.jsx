@@ -31,10 +31,16 @@ const SummaryScreen = () => {
       }));
     };
 
+    const handleShowResults = () => {
+      updateGameState({ status: 'results' });
+    };
+
     socket.on('game_started', handleGameStarted);
+    socket.on('show_results', handleShowResults);
 
     return () => {
       socket.off('game_started', handleGameStarted);
+      socket.off('show_results', handleShowResults);
     };
   }, [socket, updateGameState]);
 
@@ -163,7 +169,7 @@ const SummaryScreen = () => {
                 </button>
               ) : (
                 <button
-                  onClick={() => updateGameState({ status: 'results' })}
+                  onClick={() => socket.emit('show_results', { roomCode: gameState.roomCode })}
                   className="w-full bg-[#FFF8E7] border-4 border-[#2C1810] px-8 py-5 text-3xl text-[#2C1810] shadow-lg transform hover:scale-105 transition-transform active:scale-95"
                   style={{
                     fontFamily: 'Caveat, cursive',

@@ -330,13 +330,6 @@ io.on('connection', (socket) => {
     const room = rooms[roomCode];
     if (!room || room.status !== 'playing' || room.currentTurn !== playerId) return;
 
-    // Check if player is sitting out
-    const player = room.players.find(p => p.id === playerId);
-    if (player && player.sittingOut) {
-      // This shouldn't happen if turn advancement skips them, but guard anyway
-      player.sittingOut = false; // Reset for next time
-    }
-
     if (room.turnTimeout) clearTimeout(room.turnTimeout);
 
     const playerHand = room.hands[playerId];
@@ -346,17 +339,26 @@ io.on('connection', (socket) => {
     const passedCard = playerHand.splice(cardIndex, 1)[0];
 
     const currentIndex = room.turnOrder.indexOf(playerId);
-    let nextIndex = (currentIndex + 1) % room.turnOrder.length;
-    let nextPlayerId = room.turnOrder[nextIndex];
+    let nextIndex = currentIndex;
+    let nextPlayerId;
 
-    // Skip sitting out players
-    const nextPlayer = room.players.find(p => p.id === nextPlayerId);
-    if (nextPlayer && nextPlayer.sittingOut) {
-      console.log(`Player ${nextPlayer.name} is sitting out, skipping turn.`);
-      nextPlayer.sittingOut = false; // They sat out this turn
+    // Find the next active player, skipping any who are sitting out
+    while (true) {
       nextIndex = (nextIndex + 1) % room.turnOrder.length;
       nextPlayerId = room.turnOrder[nextIndex];
-      io.to(roomCode).emit('player_skipped', { playerId: nextPlayer.id });
+      const nextPlayer = room.players.find(p => p.id === nextPlayerId);
+      
+      if (nextPlayer && (nextPlayer.sittingOutCount || 0) > 0) {
+        console.log(`Skipping sitting out player: ${nextPlayer.name} (${nextPlayer.sittingOutCount} left)`);
+        nextPlayer.sittingOutCount--;
+        
+        io.to(roomCode).emit('player_skipped', { 
+          playerId: nextPlayer.id, 
+          sittingOutCount: nextPlayer.sittingOutCount
+        });
+      } else {
+        break; // Found an active player
+      }
     }
 
     room.hands[nextPlayerId].push(passedCard);
@@ -374,29 +376,6 @@ io.on('connection', (socket) => {
     if (room.passCount >= room.maxPasses) {
       endRound(roomCode, null);
     } else {
-      // Check if next player is sitting out
-      const checkNextTurn = () => {
-        const currentPlayer = room.players.find(p => p.id === room.currentTurn);
-        if (currentPlayer && (currentPlayer.sittingOutCount || 0) > 0) {
-          console.log(`Skipping sitting out player: ${currentPlayer.name} (${currentPlayer.sittingOutCount} left)`);
-          currentPlayer.sittingOutCount--;
-          
-          const curIndex = room.turnOrder.indexOf(room.currentTurn);
-          const nxtIndex = (curIndex + 1) % room.turnOrder.length;
-          room.currentTurn = room.turnOrder[nxtIndex];
-          
-          io.to(roomCode).emit('player_skipped', { 
-            playerId: currentPlayer.id, 
-            sittingOutCount: currentPlayer.sittingOutCount,
-            nextPlayerId: room.currentTurn 
-          });
-          
-          checkNextTurn();
-        }
-      };
-
-      checkNextTurn();
-
       io.to(roomCode).emit('turn_start', {
         playerId: room.currentTurn,
         passCount: room.passCount,
@@ -604,6 +583,13 @@ io.on('connection', (socket) => {
         }
       }
     }
+  });
+
+  // ─── Show Results ─────────────────────────────────────────────────────────
+  socket.on('show_results', ({ roomCode }) => {
+    const room = rooms[roomCode];
+    if (!room || room.hostId !== socket.id) return;
+    io.to(roomCode).emit('show_results');
   });
 
   // ─── Score Calculation ────────────────────────────────────────────────────
@@ -837,11 +823,13 @@ io.on('connection', (socket) => {
       }
 
       if (room.status === 'playing' || room.status === 'slappad') {
+        const oldTurnIndex = room.turnOrder.indexOf(socket.id);
         room.turnOrder = room.turnOrder.filter((id) => id !== socket.id);
         delete room.hands[socket.id];
 
         if (room.currentTurn === socket.id && room.turnOrder.length > 0) {
-          room.currentTurn = room.turnOrder[0];
+          const nextIndex = oldTurnIndex % room.turnOrder.length;
+          room.currentTurn = room.turnOrder[nextIndex];
           if (room.status === 'playing') {
             io.to(roomCode).emit('turn_start', {
               playerId: room.currentTurn,

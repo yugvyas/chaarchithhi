@@ -39,7 +39,7 @@ const SlapPadScreen = () => {
 
     const handleRoundEnd = (data) => {
       updateGameState((prev) => ({
-        status: data.isGameOver ? 'results' : 'summary',
+        status: 'summary',
         scores: data.scores || {},
         players: data.players || prev.players,
         slapOrder: data.slapOrder || [],
@@ -47,6 +47,7 @@ const SlapPadScreen = () => {
         isGameOver: data.isGameOver || false,
         roundsCurrent: data.roundsCurrent ?? prev.roundsCurrent,
         roundsTotal: data.roundsTotal ?? prev.roundsTotal,
+        rankUps: data.rankUps || null,
       }));
     };
 
