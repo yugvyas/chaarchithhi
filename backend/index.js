@@ -71,8 +71,13 @@ const generateRoomCode = () =>
 
 // Helper: Clean up empty room
 const cleanupRoom = (roomCode) => {
-  delete rooms[roomCode];
-  console.log(`Room ${roomCode} cleaned up`);
+  const room = rooms[roomCode];
+  if (room) {
+    if (room.turnTimeout) clearTimeout(room.turnTimeout);
+    if (room.dhappaInfo && room.dhappaInfo.timer) clearTimeout(room.dhappaInfo.timer);
+    delete rooms[roomCode];
+    console.log(`Room ${roomCode} cleaned up`);
+  }
 };
 
 io.on('connection', (socket) => {
@@ -129,6 +134,15 @@ io.on('connection', (socket) => {
     }
     if (room.players.length >= 6) {
       socket.emit('error', { message: 'Room is full (max 6 players)' });
+      return;
+    }
+    
+    const isDuplicateUser = socket.user?.sub 
+      ? room.players.some(p => p.userId === socket.user.sub)
+      : room.players.some(p => p.name.toLowerCase() === playerName.toLowerCase());
+      
+    if (isDuplicateUser) {
+      socket.emit('error', { message: 'You are already in this room from another device/tab' });
       return;
     }
 
@@ -192,6 +206,31 @@ io.on('connection', (socket) => {
     const kickedPlayerName = room.players[playerIndex].name;
     room.players.splice(playerIndex, 1);
     
+    if (room.status === 'playing' || room.status === 'slappad') {
+      const oldTurnIndex = room.turnOrder.indexOf(playerId);
+      if (oldTurnIndex !== -1) {
+        const nextPlayerId = room.turnOrder[(oldTurnIndex + 1) % room.turnOrder.length];
+        if (room.hands[nextPlayerId] && room.hands[playerId]) {
+          room.hands[nextPlayerId].push(...room.hands[playerId]);
+          io.to(nextPlayerId).emit('your_hand', { hand: room.hands[nextPlayerId] });
+        }
+        room.turnOrder = room.turnOrder.filter((id) => id !== playerId);
+        delete room.hands[playerId];
+        
+        if (room.currentTurn === playerId && room.turnOrder.length > 0) {
+          const nextIndex = oldTurnIndex % room.turnOrder.length;
+          room.currentTurn = room.turnOrder[nextIndex];
+          if (room.status === 'playing') {
+            io.to(roomCode).emit('turn_start', {
+              playerId: room.currentTurn,
+              passCount: room.passCount,
+            });
+            startTurnTimer(roomCode);
+          }
+        }
+      }
+    }
+    
     // Notify the kicked player specifically
     io.to(playerId).emit('kicked', { message: 'You have been kicked from the room.' });
     // Make them leave the socket room
@@ -223,6 +262,11 @@ io.on('connection', (socket) => {
     // FIX #12: Enforce minimum 2 players
     if (room.players.length < 2) {
       socket.emit('error', { message: 'At least 2 players are required to start' });
+      return;
+    }
+
+    if (room.status !== 'lobby') {
+      socket.emit('error', { message: 'Game is already in progress' });
       return;
     }
 
@@ -427,7 +471,7 @@ io.on('connection', (socket) => {
         players: room.players 
       });
 
-      const curIdx = room.turnOrder.indexOf(socket.id);
+      const curIdx = room.turnOrder.indexOf(room.currentTurn);
       const nxtIdx = (curIdx + 1) % room.turnOrder.length;
       room.currentTurn = room.turnOrder[nxtIdx];
       
@@ -464,9 +508,11 @@ io.on('connection', (socket) => {
       challengeable: room.settings.challengeSystem 
     });
 
-    // If challenge system is off, skip the challenge window and go straight to scoring
+    // If challenge system is off, skip the challenge window but allow a 5-second slap window
     if (!room.settings.challengeSystem) {
-      calculateScoresAndEndRound(roomCode);
+      room.dhappaInfo.timer = setTimeout(() => {
+        calculateScoresAndEndRound(roomCode);
+      }, 5000);
       return;
     }
 
@@ -571,20 +617,29 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('dhappa_challenged', { challenger: socket.id });
   });
 
-  // ─── Register Slap ────────────────────────────────────────────────────────
-  socket.on('register_slap', ({ roomCode, timestamp }) => {
+  socket.on('register_slap', ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room || room.status !== 'slappad') return;
     if (!room.slaps.some((s) => s.playerId === socket.id)) {
-      room.slaps.push({ playerId: socket.id, timestamp });
+      const serverTimestamp = Date.now();
+      room.slaps.push({ playerId: socket.id, timestamp: serverTimestamp });
       
       const player = room.players.find(p => p.id === socket.id);
       if (player && room.dhappaInfo) {
-        const slapTimeMs = Date.now() - room.dhappaInfo.startTime;
+        const slapTimeMs = serverTimestamp - room.dhappaInfo.startTime;
         if (!player.stats) player.stats = {};
         if (!player.stats.fastestSlap || slapTimeMs < player.stats.fastestSlap) {
           player.stats.fastestSlap = slapTimeMs;
         }
+      }
+      
+      // If everyone slapped and challenge system is off, we can end early
+      if (room.slaps.length === room.players.length && !room.settings.challengeSystem) {
+        if (room.dhappaInfo && room.dhappaInfo.timer) {
+          clearTimeout(room.dhappaInfo.timer);
+          room.dhappaInfo.timer = null;
+        }
+        calculateScoresAndEndRound(roomCode);
       }
     }
   });
@@ -620,8 +675,12 @@ io.on('connection', (socket) => {
       scores[slap.playerId] = score;
     });
 
+    let nextScoreIndex = slaps.length;
     room.players.forEach((p) => {
-      if (scores[p.id] === undefined) scores[p.id] = 0;
+      if (scores[p.id] === undefined) {
+        scores[p.id] = nextScoreIndex < roundScores.length ? roundScores[nextScoreIndex] : 0;
+        nextScoreIndex++;
+      }
       if (!p.score) p.score = { round: 0, total: 0 };
       p.score.round = scores[p.id];
       p.score.total += scores[p.id];
@@ -800,7 +859,9 @@ io.on('connection', (socket) => {
       return Object.keys(rankUps).length > 0 ? rankUps : null;
     } catch (error) {
       console.error("[DB] Error saving game to database:", error);
-      require('fs').appendFileSync('db_error.log', new Date().toISOString() + ' ' + (error.message || JSON.stringify(error)) + '\n');
+      require('fs').appendFile('db_error.log', new Date().toISOString() + ' ' + (error.message || JSON.stringify(error)) + '\n', (err) => {
+        if (err) console.error("Failed to write db_error.log:", err);
+      });
       return null;
     }
   };
@@ -828,6 +889,13 @@ io.on('connection', (socket) => {
 
       if (room.status === 'playing' || room.status === 'slappad') {
         const oldTurnIndex = room.turnOrder.indexOf(socket.id);
+        if (oldTurnIndex !== -1) {
+          const nextPlayerId = room.turnOrder[(oldTurnIndex + 1) % room.turnOrder.length];
+          if (room.hands[nextPlayerId] && room.hands[socket.id]) {
+            room.hands[nextPlayerId].push(...room.hands[socket.id]);
+            io.to(nextPlayerId).emit('your_hand', { hand: room.hands[nextPlayerId] });
+          }
+        }
         room.turnOrder = room.turnOrder.filter((id) => id !== socket.id);
         delete room.hands[socket.id];
 
@@ -870,7 +938,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || '3001', 10);
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });

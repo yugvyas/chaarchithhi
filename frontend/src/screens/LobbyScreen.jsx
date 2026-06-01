@@ -79,6 +79,7 @@ const LobbyScreen = () => {
     socket.on('game_started', handleGameStarted);
     socket.on('error', handleError);
     socket.on('game_aborted', handleGameAborted);
+    socket.on('kicked', handleKicked);
 
     return () => {
       socket.off('player_updated', handlePlayerUpdated);

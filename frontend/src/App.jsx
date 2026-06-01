@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
-import { SocketProvider } from './context/SocketContext';
+import { SocketProvider, useSocket } from './context/SocketContext';
 import { GameProvider, useGame } from './context/GameContext';
 
 import LandingScreen from './screens/LandingScreen';
@@ -16,21 +16,45 @@ import AuthScreen from './screens/AuthScreen';
 
 import bgMusicFile from './prettyjohn1-background-music-505061.mp3';
 
+const DisconnectOverlay = () => {
+  const { isConnected } = useSocket();
+  const { gameState } = useGame();
+  
+  if (isConnected || gameState.status === 'landing') return null;
+  
+  return (
+    <div className="absolute inset-0 z-[999] bg-[#2C1810]/90 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
+      <div className="animate-pulse flex flex-col items-center">
+        <h2 className="text-5xl text-[#D2691E] font-bold mb-4" style={{ fontFamily: 'Caveat, cursive' }}>Connection Lost!</h2>
+        <p className="text-[#FFF8E7] text-xl mb-6">Trying to reconnect to the server...</p>
+        <div className="w-12 h-12 border-4 border-[#D2691E] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    </div>
+  );
+};
+
 const AppRouter = () => {
   const { gameState } = useGame();
 
-  switch (gameState.status) {
-    case 'lobby': return <LobbyScreen />;
-    case 'playing': return <GameScreen />;
-    case 'slappad': return <SlapPadScreen />;
-    case 'summary': return <SummaryScreen />;
-    case 'results': return <ResultsScreen />;
-    case 'profile': return <ProfileScreen />;
-    case 'leaderboard': return <LeaderboardScreen />;
-    case 'landing':
-    default:
-      return <LandingScreen />;
-  }
+  return (
+    <>
+      <DisconnectOverlay />
+      {(() => {
+        switch (gameState.status) {
+          case 'lobby': return <LobbyScreen />;
+          case 'playing': return <GameScreen />;
+          case 'slappad': return <SlapPadScreen />;
+          case 'summary': return <SummaryScreen />;
+          case 'results': return <ResultsScreen />;
+          case 'profile': return <ProfileScreen />;
+          case 'leaderboard': return <LeaderboardScreen />;
+          case 'landing':
+          default:
+            return <LandingScreen />;
+        }
+      })()}
+    </>
+  );
 };
 
 const BackgroundMusic = () => {

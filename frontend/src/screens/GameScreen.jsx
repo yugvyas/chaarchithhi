@@ -14,6 +14,8 @@ const GameScreen = () => {
   const [feedbackMessage, setFeedbackMessage] = useState(null);
   const [showFalseDhappa, setShowFalseDhappa] = useState(null); // { by: string, name: string }
   const timerIntervalRef = useRef(null);
+  const falseDhappaTimeoutRef = useRef(null);
+  const feedbackTimeoutRef = useRef(null);
   const gameStateRef = useRef(gameState);
 
   useEffect(() => {
@@ -30,7 +32,10 @@ const GameScreen = () => {
   const isMyTurn = gameState.currentTurn === socket?.id;
 
   // FIX #8: Stable card rotations — computed once per hand change, not every render
-  const [cardRotations] = useState(() => gameState.hand.map((_, idx) => (idx % 2 === 0 ? 1 : -1) * (Math.random() * 3)));
+  const handIds = gameState.hand.map(c => c.id).join(',');
+  const cardRotations = React.useMemo(() => {
+    return gameState.hand.map((_, idx) => (idx % 2 === 0 ? 1 : -1) * (Math.random() * 3));
+  }, [handIds]);
   
   useEffect(() => {
     if (!socket) return;
@@ -62,7 +67,8 @@ const GameScreen = () => {
       const player = data.players.find(p => p.id === data.by);
       setShowFalseDhappa({ by: data.by, name: player?.name });
       updateGameState({ players: data.players });
-      setTimeout(() => setShowFalseDhappa(null), 3000);
+      if (falseDhappaTimeoutRef.current) clearTimeout(falseDhappaTimeoutRef.current);
+      falseDhappaTimeoutRef.current = setTimeout(() => setShowFalseDhappa(null), 3000);
     };
 
     const handleChallengeSuccessSummary = (data) => {
@@ -73,7 +79,8 @@ const GameScreen = () => {
         text: `${dhappaPlayer?.name} had a dirty hand! Round resumes.`,
       });
       updateGameState({ players: data.players, status: 'playing', dhappaBy: null });
-      setTimeout(() => setFeedbackMessage(null), 3000);
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = setTimeout(() => setFeedbackMessage(null), 3000);
     };
 
     const handleChallengeFailedSummary = (data) => {
@@ -85,19 +92,6 @@ const GameScreen = () => {
       updateGameState({ settings: data.settings });
     };
 
-    const handleRoundEnd = (data) => {
-      updateGameState((prev) => ({
-        status: 'summary',
-        scores: data.scores || {},
-        players: data.players || prev.players,
-        slapOrder: data.slapOrder || [],
-        stalemate: data.stalemate || false,
-        isGameOver: data.isGameOver || false,
-        roundsCurrent: data.roundsCurrent ?? prev.roundsCurrent,
-        roundsTotal: data.roundsTotal ?? prev.roundsTotal,
-        rankUps: data.rankUps || null,
-      }));
-    };
 
     const handlePlayerSkipped = (data) => {
       const player = gameStateRef.current.players?.find(p => p.id === data.playerId);
@@ -106,7 +100,8 @@ const GameScreen = () => {
         title: 'SKIPPED!',
         text: `${player?.name || 'Someone'} is sitting out (${data.sittingOutCount} left).`,
       });
-      setTimeout(() => setFeedbackMessage(null), 2000);
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+      feedbackTimeoutRef.current = setTimeout(() => setFeedbackMessage(null), 2000);
     };
 
     // FIX #2: GameScreen no longer listens for round_end.
@@ -125,7 +120,6 @@ const GameScreen = () => {
     socket.on('challenge_failed_summary', handleChallengeFailedSummary);
     socket.on('settings_updated', handleSettingsUpdated);
     socket.on('player_skipped', handlePlayerSkipped);
-    socket.on('round_end', handleRoundEnd);
     socket.on('game_aborted', handleGameAborted);
 
     return () => {
@@ -137,8 +131,9 @@ const GameScreen = () => {
       socket.off('challenge_failed_summary', handleChallengeFailedSummary);
       socket.off('settings_updated', handleSettingsUpdated);
       socket.off('player_skipped', handlePlayerSkipped);
-      socket.off('round_end', handleRoundEnd);
       socket.off('game_aborted', handleGameAborted);
+      if (falseDhappaTimeoutRef.current) clearTimeout(falseDhappaTimeoutRef.current);
+      if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
     };
   }, [socket, updateGameState]);
 
@@ -146,18 +141,20 @@ const GameScreen = () => {
   useEffect(() => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     
-    timerIntervalRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        const limit = gameStateRef.current.settings?.turnTimeLimit ?? 20000;
-        if (limit === 0) return 0; // No timer decrease if no limit
-        return Math.max(0, prev - 1);
-      });
-    }, 1000);
+    if (gameState.status === 'playing') {
+      timerIntervalRef.current = setInterval(() => {
+        setTimeLeft((prev) => {
+          const limit = gameStateRef.current.settings?.turnTimeLimit ?? 20000;
+          if (limit === 0) return 0; // No timer decrease if no limit
+          return Math.max(0, prev - 1);
+        });
+      }, 1000);
+    }
 
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [gameState.currentTurn]);
+  }, [gameState.currentTurn, gameState.status]);
 
   const handlePass = () => {
     if (!selectedCardId || !isMyTurn) return;
